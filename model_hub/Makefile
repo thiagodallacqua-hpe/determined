@@ -94,12 +94,12 @@ publish-transformers-dev:
 
 .PHONY: build-mmdetection-dev
 build-mmdetection-dev:
-	if [[ "$(DEFAULT_GPU_IMAGE)" != *"cuda-11.1"* ]]; then \
+	if [[ "$(DEFAULT_GPU_IMAGE)" != *"cuda-11.3"* ]]; then \
 	  echo "Expected $(DEFAULT_GPU_IMAGE) to have cuda version $(MMCV_CUDA_VERSION)."; \
-	  exit; \
-	elif [[ "$(DEFAULT_GPU_IMAGE)" != *"pytorch-1.9"* ]]; then \
+	  exit 1; \
+	elif [[ "$(DEFAULT_GPU_IMAGE)" != *"pytorch-1.10"* ]]; then \
 	  echo "Expected $(DEFAULT_GPU_IMAGE) to have pytorch version $(TORCH_VERSION)."; \
-	  exit; \
+	  exit 1; \
 	else \
 	  docker build -f docker/Dockerfile.mmdetection \
 	  	  --build-arg BASE_IMAGE=$(DEFAULT_GPU_IMAGE) \
