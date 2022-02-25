@@ -20,7 +20,7 @@ TRANSFORMERS_ENVIRONMENT_ROOT := determinedai/model-hub-transformers
 MMCV_CUDA_VERSION := cu113 # Needs to match DEFAULT_GPU_IMAGE
 TORCH_VERSION := 1.10.2 # Needs to match DEFAULT_GPU_IMAGE
 MMCV_VERSION := 1.3.12
-MMDETECTION_VERSION := 2.16.0
+MMDETECTION_VERSION := 2.21.0
 MMDETECTION_ENVIRONMENT_ROOT := determinedai/model-hub-mmdetection
 
 # Example dirs
