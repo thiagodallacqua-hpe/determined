@@ -18,7 +18,7 @@ DATASETS_VERSION := 1.9.0
 TRANSFORMERS_ENVIRONMENT_ROOT := determinedai/model-hub-transformers
 # MMDetection Args
 MMCV_CUDA_VERSION := cu113 # Needs to match DEFAULT_GPU_IMAGE
-TORCH_VERSION := 1.10.2 # Needs to match DEFAULT_GPU_IMAGE
+TORCH_VERSION := 1.10.0 # Needs to match DEFAULT_GPU_IMAGE
 MMCV_VERSION := 1.4.5
 MMDETECTION_VERSION := 2.21.0
 MMDETECTION_ENVIRONMENT_ROOT := determinedai/model-hub-mmdetection
