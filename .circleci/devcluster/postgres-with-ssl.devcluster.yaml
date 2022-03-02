@@ -15,7 +15,7 @@ stages:
             cat /etc/passwd
             cat /etc/group
             whoami
-            uid=$(docker run --rm postgres:10 id -u postgres)
+            uid=$(docker run --rm postgres:$DET_POSTGRES_VERSION id -u postgres)
             sudo chown $uid server.crt server.key
             cat >pg_hba.conf <<EOF
             local all all trust
@@ -37,7 +37,7 @@ stages:
         - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256
         - -v
         - /tmp/pg:/tmp/pg
-        - postgres:10
+        - postgres:$DET_POSTGRES_VERSION
         - postgres
         - -c
         - ssl=true
