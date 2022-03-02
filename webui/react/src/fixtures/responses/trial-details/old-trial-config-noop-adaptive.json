@@ -30,8 +30,8 @@
   "name": "noop_adaptive",
   "environment": {
     "image": {
-      "cpu": "determinedai/environments-dev:py-3.8-pytorch-1.10-lightning-1.5-tf-2.8-cpu-81a51ba",
-      "gpu": "determinedai/environments-dev:cuda-11.3-pytorch-1.10-lightning-1.5-tf-2.8-gpu-81a51ba"
+      "cpu": "determinedai/environments-dev:py-3.8-pytorch-1.10-lightning-1.5-tf-2.8-cpu-136a60e",
+      "gpu": "determinedai/environments-dev:cuda-11.3-pytorch-1.10-lightning-1.5-tf-2.8-gpu-136a60e"
     },
     "ports": null,
     "force_pull_image": false,
