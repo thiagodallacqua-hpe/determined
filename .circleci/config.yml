@@ -1943,6 +1943,24 @@ workflows:
           devcluster-config: elastic.devcluster.yaml
           target-stage: agent
 
+      - test-e2e:
+          name: test-e2e-postgres10-with-ssl
+          requires:
+            - build-go
+          parallelism: 1
+          mark: e2e_cpu_elastic
+          devcluster-config: postgres10-with-ssl.devcluster.yaml
+          target-stage: agent
+
+      - test-e2e:
+          name: test-e2e-postgres14-with-ssl
+          requires:
+            - build-go
+          parallelism: 1
+          mark: e2e_cpu_elastic
+          devcluster-config: postgres14-with-ssl.devcluster.yaml
+          target-stage: agent
+
       - deploy:
           enable-cors: true
           context: aws
