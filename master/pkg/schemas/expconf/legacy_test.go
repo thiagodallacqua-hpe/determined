@@ -257,8 +257,8 @@ func TestLegacyConfig(t *testing.T) {
                     gpu: []
                   force_pull_image: false
                   image:
-                    cpu: determinedai/environments-dev:py-3.7-pytorch-1.7-tf-1.15-cpu-136a60e
-                    gpu: determinedai/environments-dev:cuda-10.2-pytorch-1.7-tf-1.15-gpu-136a60e
+                    cpu: determinedai/environments-dev:py-3.7-pytorch-1.7-tf-1.15-cpu-ca75ad6
+                    gpu: determinedai/environments-dev:cuda-10.2-pytorch-1.7-tf-1.15-gpu-ca75ad6
                   pod_spec:
                     apiVersion: v1
                     kind: Pod
