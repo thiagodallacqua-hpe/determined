@@ -6,8 +6,9 @@ import (
 )
 
 type options struct {
-	logLevel string
-	noColor  bool
+	logLevel     string
+	noColor      bool
+	noAutoRemove bool
 }
 
 var (

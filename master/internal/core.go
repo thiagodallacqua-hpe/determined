@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-systemd/activation"
@@ -29,9 +30,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/soheilhy/cmux"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/determined-ai/determined/master/internal/api"
+	"github.com/determined-ai/determined/master/internal/cluster"
 	"github.com/determined-ai/determined/master/internal/command"
 	"github.com/determined-ai/determined/master/internal/config"
 	detContext "github.com/determined-ai/determined/master/internal/context"
@@ -58,8 +61,6 @@ import (
 	"github.com/determined-ai/determined/master/version"
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
 	"github.com/determined-ai/determined/proto/pkg/masterv1"
-
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 const (
@@ -548,9 +549,10 @@ func closeWithErrCheck(name string, closer io.Closer) {
 	}
 }
 
-func (m *Master) tryRestoreExperiment(sema chan struct{}, e *model.Experiment) {
+func (m *Master) tryRestoreExperiment(sema chan struct{}, wg *sync.WaitGroup, e *model.Experiment) {
 	sema <- struct{}{}
 	defer func() { <-sema }()
+	defer func() { wg.Done() }()
 
 	if err := m.restoreExperiment(e); err != nil {
 		log.WithError(err).Errorf("failed to restore experiment: %d", e.ID)
@@ -560,6 +562,34 @@ func (m *Master) tryRestoreExperiment(sema chan struct{}, e *model.Experiment) {
 		}
 		telemetry.ReportExperimentStateChanged(m.system, m.db, *e)
 	}
+}
+
+// TODO XXX wait only for open experiments-trials.
+func (m *Master) restoreNonTerminalExperiments() error {
+	// Restore non-terminal experiments from the database.
+	// Limit the number of concurrent restores at any time within the system to maxConcurrentRestores.
+	// This has avoided resource exhaustion in the past (on the db connection pool) and probably is
+	// good still to avoid overwhelming us on restart after a crash.
+	sema := make(chan struct{}, maxConcurrentRestores)
+	m.system.ActorOf(actor.Addr("experiments"), &actors.Group{})
+	m.system.ActorOf(job.JobsActorAddr, job.NewJobs(sproto.GetCurrentRM(m.system)))
+	toRestore, err := m.db.NonTerminalExperiments()
+	if err != nil {
+		return errors.Wrap(err, "couldn't retrieve experiments to restore")
+	}
+
+	wg := sync.WaitGroup{}
+	for _, exp := range toRestore {
+		wg.Add(1)
+		go m.tryRestoreExperiment(sema, &wg, exp)
+	}
+
+	wg.Wait()
+
+	// TODO XXX crutch: need to wait for experiment to restore trials and check if allocation can be restored.
+	time.Sleep(1 * time.Second)
+
+	return nil
 }
 
 // convertDBErrorsToNotFound helps reduce boilerplate in our handlers, by
@@ -729,6 +759,7 @@ func (m *Master) Run(ctx context.Context) error {
 
 	m.proxy, _ = m.system.ActorOf(actor.Addr("proxy"), &proxy.Proxy{})
 
+	task.InitAllocationMap()
 	m.system.MustActorOf(actor.Addr("allocation-aggregator"), &allocationAggregator{db: m.db})
 
 	hpi, err := hpimportance.NewManager(m.db, m.system, m.config.HPImportance, m.config.Root)
@@ -808,19 +839,8 @@ func (m *Master) Run(ctx context.Context) error {
 	rwCoordinator := newRWCoordinator()
 	m.rwCoordinator, _ = m.system.ActorOf(actor.Addr("rwCoordinator"), rwCoordinator)
 
-	// Restore non-terminal experiments from the database.
-	// Limit the number of concurrent restores at any time within the system to maxConcurrentRestores.
-	// This has avoided resource exhaustion in the past (on the db connection pool) and probably is
-	// good still to avoid overwhelming us on restart after a crash.
-	sema := make(chan struct{}, maxConcurrentRestores)
-	m.system.ActorOf(actor.Addr("experiments"), &actors.Group{})
-	m.system.ActorOf(job.JobsActorAddr, job.NewJobs(sproto.GetCurrentRM(m.system)))
-	toRestore, err := m.db.NonTerminalExperiments()
-	if err != nil {
-		return errors.Wrap(err, "couldn't retrieve experiments to restore")
-	}
-	for _, exp := range toRestore {
-		go m.tryRestoreExperiment(sema, exp)
+	if err := m.restoreNonTerminalExperiments(); err != nil {
+		return err
 	}
 
 	// End stats for dangling agents/instances in case of master crushed
@@ -836,19 +856,24 @@ func (m *Master) Run(ctx context.Context) error {
 	if err = m.db.FailDeletingExperiment(); err != nil {
 		return err
 	}
-	if err = m.db.CloseOpenAllocations(); err != nil {
-		return err
-	}
-	if err = m.db.EndAllTaskStats(); err != nil {
-		return err
-	}
-	if err = task.WipeResourcesState(); err != nil {
-		return err
+	// TODO XXX crutch: only cleanup ones that has failed to restore.
+	const CLOSE_OPEN_ALLOCATIONS bool = false
+	if CLOSE_OPEN_ALLOCATIONS {
+		if err = m.db.CloseOpenAllocations(); err != nil {
+			return err
+		}
+		if err = task.WipeResourcesState(); err != nil {
+			return err
+		}
+		if err = m.db.EndAllTaskStats(); err != nil {
+			return err
+		}
 	}
 
 	// The below function call is intentionally made after the call to CloseOpenAllocations.
 	// This ensures that in the scenario where a cluster fails all open allocations are
 	// set to the last cluster heartbeat when the cluster was running.
+	cluster.InitTheLastBootClusterHeartbeat()
 	go updateClusterHeartbeat(ctx, m.db)
 
 	// Docs and WebUI.

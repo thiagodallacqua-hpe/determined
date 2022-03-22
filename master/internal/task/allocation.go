@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/master/internal/api"
+	"github.com/determined-ai/determined/master/internal/cluster"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/prom"
 	"github.com/determined-ai/determined/master/internal/proxy"
@@ -68,7 +70,8 @@ type (
 		// active all gather state
 		allGather *allGather
 
-		logCtx detLogger.Context
+		logCtx   detLogger.Context
+		restored bool
 	}
 
 	// MarkResourcesDaemon marks the given reservation as a daemon. In the event of a normal exit,
@@ -170,6 +173,7 @@ func (a *Allocation) Receive(ctx *actor.Context) error {
 	// These messages handle interaction with the resource manager. The generally
 	// handle the primary allocation lifecycle/functionality.
 	case actor.PreStart:
+		RegisterAllocation(a.model.AllocationID, ctx.Self())
 		ctx.AddLabels(a.logCtx)
 		if err := a.RequestResources(ctx); err != nil {
 			a.Error(ctx, err)
@@ -180,6 +184,8 @@ func (a *Allocation) Receive(ctx *actor.Context) error {
 		}
 	case sproto.ResourcesStateChanged:
 		a.ResourcesStateChanged(ctx, msg)
+	case sproto.ResourcesFailure:
+		a.ResourceFailure(ctx, msg)
 	case sproto.GetResourcesContainerState:
 		if v, ok := a.resources[msg.ResourcesID]; ok {
 			if v.container == nil {
@@ -194,6 +200,7 @@ func (a *Allocation) Receive(ctx *actor.Context) error {
 		a.Terminate(ctx)
 	case actor.PostStop:
 		a.Cleanup(ctx)
+		DeregisterAllocation(a.model.AllocationID)
 	case sproto.ContainerLog:
 		a.sendEvent(ctx, msg.ToEvent())
 
@@ -312,11 +319,24 @@ func (a *Allocation) Receive(ctx *actor.Context) error {
 
 // RequestResources sets up the allocation.
 func (a *Allocation) RequestResources(ctx *actor.Context) error {
-	a.setModelState(model.AllocationStatePending)
+	if a.req.Restore {
+		// Load allocation.
+		fmt.Println("!!!! a.req.Restore")
+		db.Bun().NewSelect().Model(&a.model).
+			Where("allocation_id = ?", a.model.AllocationID).
+			Scan(context.TODO())
+	} else {
+		// Insert new allocation.
+		a.setModelState(model.AllocationStatePending)
 
-	if err := a.db.AddAllocation(&a.model); err != nil {
-		return errors.Wrap(err, "saving trial allocation")
+		fmt.Printf("ADDING ALLOCATION %s REQ: %s\n", a.model.AllocationID, a.req.AllocationID)
+		if err := a.db.AddAllocation(&a.model); err != nil {
+			return errors.Wrap(err, "saving trial allocation")
+		}
+		fmt.Println("Allocation id 20: ", a.model.AllocationID, a.req.AllocationID)
 	}
+
+	// TODO XXX have RM flag for supporting restore.
 	a.req.TaskActor = ctx.Self()
 	if err := ctx.Ask(a.rm, a.req).Error(); err != nil {
 		return errors.Wrap(err, "failed to request allocation")
@@ -348,6 +368,11 @@ func (a *Allocation) Cleanup(ctx *actor.Context) {
 		if len(a.resources) > 0 {
 			a.markResourcesReleased(ctx)
 		}
+
+		if err := a.purgeRestorableResources(ctx); err != nil {
+			ctx.Log().WithError(err).Error("failed to purge restorable resources")
+		}
+
 		ctx.Tell(a.rm, sproto.ResourcesReleased{TaskActor: ctx.Self()})
 	}
 }
@@ -357,10 +382,16 @@ func (a *Allocation) Cleanup(ctx *actor.Context) {
 // heavy stuff unless it is necessarily (which also works to spread occurrences of the same work
 // out). Eventually, Allocations should just be started with their TaskSpec.
 func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.ResourcesAllocated) error {
-	if a.getModelState() != model.AllocationStatePending {
-		// If we have moved on from the pending state, these must be stale (and we must have
-		// already released them, just the scheduler hasn't gotten word yet).
-		return ErrStaleResourcesReceived{}
+	if !a.req.Restore {
+		if a.getModelState() != model.AllocationStatePending {
+			// If we have moved on from the pending state, these must be stale (and we must have
+			// already released them, just the scheduler hasn't gotten word yet).
+			return ErrStaleResourcesReceived{}
+		}
+
+		a.setModelState(model.AllocationStateAssigned)
+	} else {
+		fmt.Println("restored resourcesallocated state: ", a.getModelState())
 	}
 
 	a.setModelState(model.AllocationStateAssigned)
@@ -368,6 +399,7 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 		return errors.Wrapf(err, "appending resources")
 	}
 
+	// TODO XXX this is a stale comment
 	// Get the task spec first, so the trial/task table is populated before allocations.
 	resp := ctx.Ask(ctx.Self().Parent(), BuildTaskSpec{})
 	switch ok, err := resp.ErrorOrTimeout(time.Hour); {
@@ -393,9 +425,14 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 		return errors.Wrap(err, "recording task queued stats")
 	}
 
-	token, err := a.db.StartAllocationSession(a.model.AllocationID)
-	if err != nil {
-		return errors.Wrap(err, "starting a new allocation session")
+	// TODO reuse allocation session?
+	token := ""
+	if !a.req.Restore {
+		token2, err := a.db.StartAllocationSession(a.model.AllocationID)
+		if err != nil {
+			return errors.Wrap(err, "starting a new allocation session")
+		}
+		token = token2
 	}
 
 	if a.req.Preemptible {
@@ -407,13 +444,16 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 		a.idleTimeoutWatcher.PreStart(ctx)
 	}
 
-	for cID, r := range a.resources {
-		if err := r.Start(ctx, a.logCtx, spec, sproto.ResourcesRuntimeInfo{
-			Token:        token,
-			AgentRank:    a.resources[cID].Rank,
-			IsMultiAgent: len(a.resources) > 1,
-		}); err != nil {
-			return fmt.Errorf("starting resources (%v): %w", r, err)
+	if !a.req.Restore {
+		// TODO don't start when they're already started
+		for cID, r := range a.resources {
+			if err := r.Start(ctx, a.logCtx, spec, sproto.ResourcesRuntimeInfo{
+				Token:        token,
+				AgentRank:    a.resources[cID].Rank,
+				IsMultiAgent: len(a.resources) > 1,
+			}); err != nil {
+				return fmt.Errorf("starting resources (%v): %w", r, err)
+			}
 		}
 	}
 	a.resourcesStarted = true
@@ -552,6 +592,23 @@ func (a *Allocation) ResourcesStateChanged(
 	if err := a.db.UpdateAllocationState(a.model); err != nil {
 		ctx.Log().Error(err)
 	}
+}
+
+func (a *Allocation) ResourceFailure(ctx *actor.Context, msg sproto.ResourcesFailure) {
+	a.setMostProgressedModelState(model.AllocationStateTerminating)
+
+	if err := a.db.UpdateAllocationState(a.model); err != nil {
+		ctx.Log().Error(err)
+	}
+
+	a.model.EndTime = cluster.TheLastBootClusterHeartbeat()
+
+	fmt.Println("COMPLETING ALLOCATION", a.req.AllocationID, a.model.AllocationID, a.model.EndTime)
+	if err := a.db.CompleteAllocation(&a.model); err != nil {
+		ctx.Log().WithError(err).Error("failed to mark allocation completed")
+	}
+
+	a.Error(ctx, msg)
 }
 
 // Exit attempts to exit an allocation while not killing or preempting it.
@@ -696,6 +753,7 @@ func (a *Allocation) unregisterProxies(ctx *actor.Context) {
 }
 
 func (a *Allocation) terminated(ctx *actor.Context) {
+	fmt.Println("terminated 10")
 	a.setMostProgressedModelState(model.AllocationStateTerminated)
 	exit := &AllocationExited{FinalState: a.State()}
 	if a.exited {
@@ -708,14 +766,22 @@ func (a *Allocation) terminated(ctx *actor.Context) {
 		return
 	}
 	a.exited = true
+	fmt.Println("terminated 20")
 	defer ctx.Tell(ctx.Self().Parent(), exit)
 	defer ctx.Tell(a.rm, sproto.ResourcesReleased{TaskActor: ctx.Self()})
 	defer a.unregisterProxies(ctx)
 	defer ctx.Self().Stop()
+	if err := a.purgeRestorableResources(ctx); err != nil {
+		ctx.Log().WithError(err).Error("failed to purge restorable resources")
+	}
+
 	if len(a.resources) == 0 {
 		return
 	}
+	fmt.Println("terminated 30")
 	defer a.markResourcesReleased(ctx)
+
+	fmt.Println("terminated per-purge")
 
 	if a.req.Preemptible {
 		defer a.preemption.Close()
@@ -768,16 +834,36 @@ func (a *Allocation) terminated(ctx *actor.Context) {
 
 // markResourcesReleased persists completion information.
 func (a *Allocation) markResourcesReleased(ctx *actor.Context) {
+	fmt.Println("markResourcesReleased", a.model.AllocationID)
 	a.model.EndTime = ptrs.Ptr(time.Now().UTC())
-	if err := a.db.DeleteAllocationSession(a.model.AllocationID); err != nil {
-		ctx.Log().WithError(err).Error("error delete allocation session")
-	}
+	/*
+		if err := a.db.DeleteAllocationSession(a.model.AllocationID); err != nil {
+			ctx.Log().WithError(err).Error("error delete allocation session")
+		}
+	*/
 	if err := a.db.CompleteAllocation(&a.model); err != nil {
 		ctx.Log().WithError(err).Error("failed to mark allocation completed")
 	}
 
 	telemetry.ReportAllocationTerminal(
 		ctx.Self().System(), a.db, a.model, a.resources.firstDevice())
+}
+
+func (a *Allocation) purgeRestorableResources(ctx *actor.Context) error {
+	fmt.Println("purging", a.model.AllocationID)
+	_, err := db.Bun().NewDelete().Model((*ResourcesWithState)(nil)).
+		Where("allocation_id = ?", a.model.AllocationID).
+		Exec(context.TODO())
+
+	if err != nil {
+		return err
+	}
+
+	if err := a.db.CompleteAllocation(&a.model); err != nil {
+		ctx.Log().WithError(err).Error("failed to mark allocation completed")
+	}
+
+	return err
 }
 
 const killedLogSubstr = "exit code 137"

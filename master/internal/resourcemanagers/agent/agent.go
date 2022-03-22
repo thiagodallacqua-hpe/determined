@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"fmt"
 	"net/http"
+	"reflect"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"syscall"
@@ -36,7 +39,7 @@ type (
 		started bool
 		version string
 
-		maxZeroSlotContainers int
+		maxZeroSlotContainers int // TODO XXX: can we have it just on the resource pool
 		agentReconnectWait    time.Duration
 		agentReattachEnabled  bool
 		// awaitingReconnect et al contain reconnect related state. The pattern for
@@ -105,6 +108,12 @@ func (a *agent) Receive(ctx *actor.Context) error {
 func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 	switch msg := msg.(type) {
 	case actor.PreStart:
+		if a.agentState != nil { // not nil agentState on PreStart means it's restored.
+			a.started = true
+			a.agentState.Handler = ctx.Self()
+			a.socketDisconnected(ctx)
+			ctx.Tell(a.resourcePool, sproto.AddAgent{Agent: ctx.Self(), Label: a.agentState.Label})
+		}
 		a.slots, _ = ctx.ActorOf("slots", &slots{})
 	case model.AgentSummary:
 		ctx.Respond(a.summarize(ctx))
@@ -157,13 +166,19 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 				Drain:   &a.agentState.draining,
 			})
 
+			if len(a.reconnectBacklog) > 0 {
+				for i, msg := range a.reconnectBacklog {
+					fmt.Println("reconnectBacklog", i, reflect.TypeOf(msg))
+				}
+			}
+
 			for _, msg := range a.reconnectBacklog {
 				if err := a.receive(ctx, msg); err != nil {
+					ctx.Log().WithError(err).WithField("msg", msg).Debugf("repl backlog")
 					return errors.Wrapf(err, "replaying backlog")
 				}
 			}
 			a.reconnectBacklog = nil
-
 			ctx.Tell(a.resourcePool, sproto.UpdateAgent{Agent: ctx.Self()})
 		}
 	case sproto.KillTaskContainer:
@@ -282,22 +297,7 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 
 		ctx.Log().WithError(msg.Error).Errorf("child failed, awaiting reconnect: %s", msg.Child.Address())
 
-		a.socket = nil
-		a.awaitingReconnect = true
-
-		timerActor, _ := actors.NotifyAfter(ctx, a.agentReconnectWait, reconnectTimeout{})
-		a.reconnectTimers = append(a.reconnectTimers, timerActor)
-
-		a.preDisconnectEnabled = a.agentState.enabled
-		a.preDisconnectDraining = a.agentState.draining
-		// Mark ourselves as draining to avoid action on ourselves while we recover. While the
-		// system is technically correct without this, it's better because we avoid any waste
-		// effort scheduling things only to have them suffer AgentErrors later.
-		a.agentState.Disable(ctx, true)
-		a.agentState.patchAllSlotsState(ctx, PatchAllSlotsState{
-			Enabled: &a.agentState.enabled,
-			Drain:   &a.agentState.draining,
-		})
+		a.socketDisconnected(ctx)
 		ctx.Tell(a.resourcePool, sproto.UpdateAgent{Agent: ctx.Self()})
 	case reconnectTimeout:
 		// Re-enter from actor.ChildFailed.
@@ -331,11 +331,15 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 
 		ctx.Respond(a.agentState.patchAllSlotsState(ctx, msg))
 	case AllocateFreeDevices:
+		fmt.Println("AllocateFreeDevices")
 		if !a.started {
+			fmt.Println("AllocateFreeDevices not started")
 			ctx.Respond(errors.New("can't allocate free devices: agent not started"))
 			return nil
 		}
 		devices, err := a.agentState.AllocateFreeDevices(msg.Slots, msg.ContainerID)
+		fmt.Println("AllocateFreeDevices devices", devices)
+		fmt.Println("AllocateFreeDevices err", err)
 		if err != nil {
 			ctx.Respond(err)
 		} else {
@@ -373,15 +377,20 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 				})
 			}
 		}
+		a.agentState.delete()
 		ctx.Tell(a.resourcePool, sproto.RemoveAgent{Agent: ctx.Self()})
 	default:
+		fmt.Println("UNEXPECTED MESSAGE", msg, reflect.TypeOf(msg))
+		debug.PrintStack()
 		return actor.ErrUnexpectedMessage(ctx)
 	}
 	return nil
 }
 
 func (a *agent) bufferForRecovery(ctx *actor.Context, msg interface{}) {
-	ctx.Log().WithField("msg", msg).Debugf("buffering message until agent reconnects")
+	// This explodes the debug logs when msg is big
+	//ctx.Log().WithField("msg", msg).Debugf("buffering message until agent reconnects")
+	ctx.Log().Debugf("buffering message until agent reconnects")
 	a.reconnectBacklog = append(a.reconnectBacklog, msg)
 }
 
@@ -404,6 +413,8 @@ func (a *agent) handleIncomingWSMessage(ctx *actor.Context, msg aproto.MasterMes
 		if !a.started {
 			a.agentStarted(ctx, msg.AgentStarted)
 		}
+		// TODO XXX set version
+
 		a.started = true
 
 		a.handleContainersReattached(ctx, msg.AgentStarted)
@@ -446,6 +457,7 @@ func (a *agent) agentStarted(ctx *actor.Context, agentStarted *aproto.AgentStart
 	a.agentState = NewAgentState(
 		sproto.AddAgent{Agent: ctx.Self(), Label: agentStarted.Label},
 		a.maxZeroSlotContainers)
+	a.agentState.resourcePoolName = a.resourcePoolName // TODO
 	a.agentState.agentStarted(ctx, agentStarted)
 	ctx.Tell(a.resourcePool, sproto.AddAgent{
 		Agent: ctx.Self(),
@@ -457,6 +469,7 @@ func (a *agent) agentStarted(ctx *actor.Context, agentStarted *aproto.AgentStart
 }
 
 func (a *agent) containerStateChanged(ctx *actor.Context, sc aproto.ContainerStateChanged) {
+	//a.agentState.restoreContainersField()
 	taskActor, ok := a.agentState.containers[sc.Container.ID]
 	check.Panic(check.True(ok, "container not allocated to agent: container %s", sc.Container.ID))
 
@@ -472,11 +485,25 @@ func (a *agent) containerStateChanged(ctx *actor.Context, sc aproto.ContainerSta
 		delete(a.agentState.containers, sc.Container.ID)
 	}
 
-	ctx.Tell(taskActor, sproto.FromContainerStateChanged(sc))
+	resourceStateChanged := sproto.FromContainerStateChanged(sc)
+	if resourceStateChanged.Container != nil {
+	}
+	ctx.Tell(taskActor, resourceStateChanged)
 	a.agentState.containerStateChanged(ctx, sc)
 }
 
 func (a *agent) summarize(ctx *actor.Context) model.AgentSummary {
+	// BEGIN DEBUG
+	fmt.Println("AGENT STATE DEVICES: ", a.agentState.Devices)
+	slotStates := []slot{}
+	for _, v := range a.agentState.slotStates {
+		if v != nil {
+			slotStates = append(slotStates, *v)
+		}
+	}
+	fmt.Println("AGENT STATE SLOTS: ", slotStates)
+	// END DEBUG
+
 	result := model.AgentSummary{
 		ID:             ctx.Self().Address().Local(),
 		RegisteredTime: ctx.Self().RegisteredTime(),
@@ -503,7 +530,20 @@ func (a *agent) summarize(ctx *actor.Context) model.AgentSummary {
 }
 
 func (a *agent) gatherContainersToReattach(ctx *actor.Context) []aproto.ContainerReattach {
+	err := a.agentState.restoreContainersField()
+	if err != nil {
+		ctx.Log().WithError(err).Warn("failed restoreContainersField in gatherContainersToReattach")
+	}
 	result := make([]aproto.ContainerReattach, 0, len(a.agentState.containers))
+
+	// TODO XXX this misses out on zero-slot containers.
+	for _, slot := range a.agentState.slotStates {
+		if slot.container != nil {
+			result = append(result, aproto.ContainerReattach{Container: *slot.container})
+		}
+	}
+
+	/*  OLD
 	for containerID, allocation := range a.agentState.containers {
 		resp := ctx.Ask(allocation, sproto.GetResourcesContainerState{
 			ResourcesID: sproto.ResourcesID(containerID),
@@ -519,6 +559,8 @@ func (a *agent) gatherContainersToReattach(ctx *actor.Context) []aproto.Containe
 			result = append(result, aproto.ContainerReattach{Container: containerState})
 		}
 	}
+	*/
+	fmt.Println("gatherContainersToReattach: ", result)
 	return result
 }
 
@@ -580,4 +622,25 @@ func (a *agent) clearNonReattachedContainers(
 			}
 		}
 	}
+	a.agentState.clearUnlessRecovered(recovered)
+}
+
+func (a *agent) socketDisconnected(ctx *actor.Context) {
+	a.socket = nil
+	a.awaitingReconnect = true
+
+	timerActor, _ := actors.NotifyAfter(ctx, a.agentReconnectWait, reconnectTimeout{})
+	a.reconnectTimers = append(a.reconnectTimers, timerActor)
+
+	a.preDisconnectEnabled = a.agentState.enabled
+	a.preDisconnectDraining = a.agentState.draining
+	// Mark ourselves as draining to avoid action on ourselves while we recover. While the
+	// system is technically correct without this, it's better because we avoid any waste
+	// effort scheduling things only to have them suffer AgentErrors later.
+	a.agentState.Disable(ctx, true)
+	a.agentState.patchAllSlotsState(ctx, PatchAllSlotsState{
+		Enabled: &a.agentState.enabled,
+		Drain:   &a.agentState.draining,
+	})
+	ctx.Tell(a.resourcePool, sproto.UpdateAgent{Agent: ctx.Self()})
 }

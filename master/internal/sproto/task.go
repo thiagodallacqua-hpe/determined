@@ -44,6 +44,7 @@ type (
 		IdleTimeout  *IdleTimeoutConfig
 		ProxyPort    *PortProxyConfig
 		StreamEvents *EventStreamConfig
+		Restore      bool
 	}
 
 	// IdleTimeoutConfig configures how idle timeouts should behave.
@@ -126,6 +127,7 @@ type (
 		ResourcePool      string
 		Resources         []Resources
 		JobSubmissionTime time.Time
+		Recovered         bool
 	}
 	// ReleaseResources notifies the task actor to release resources.
 	ReleaseResources struct {

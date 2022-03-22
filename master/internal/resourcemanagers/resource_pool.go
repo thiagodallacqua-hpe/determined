@@ -103,8 +103,10 @@ func (rp *ResourcePool) setupProvisioner(ctx *actor.Context) error {
 
 func (rp *ResourcePool) allocateRequest(ctx *actor.Context, msg sproto.AllocateRequest) {
 	rp.notifyOnStop(ctx, msg.TaskActor, sproto.ResourcesReleased{TaskActor: msg.TaskActor})
+	//fmt.Println("ALLOCATE REQUEST", msg.AllocationID, msg.TaskID)
 
 	if len(msg.AllocationID) == 0 {
+		//fmt.Println("GENERATING ALLOCATION ID")
 		msg.AllocationID = model.AllocationID(uuid.New().String())
 	}
 	if msg.Group == nil {
@@ -126,7 +128,94 @@ func (rp *ResourcePool) allocateRequest(ctx *actor.Context, msg sproto.AllocateR
 		rp.groupActorToID[msg.Group] = msg.JobID
 		rp.IDToGroupActor[msg.JobID] = msg.Group
 	}
+
+	if msg.Restore {
+		// TODO XXX check if it can be restored.
+		succ, err := rp.restoreResources(ctx, &msg)
+		if err != nil || !succ {
+			if err != nil {
+				ctx.Log().WithError(err).Error("failed to restore resources...")
+			}
+
+			fmt.Println("TODO XXX failed to restore resources")
+			// Clear out the state / close and terminate the allocation.
+
+			errMsg := "failed to restore"
+			if err != nil {
+				errMsg = err.Error()
+			}
+
+			exitCode := sproto.ExitCode(-9)
+			rf := sproto.ResourcesFailure{
+				FailureType: sproto.RestoreError,
+				ErrMsg:      errMsg,
+				ExitCode:    &exitCode,
+			}
+			ctx.Tell(msg.TaskActor, rf)
+
+			return
+		}
+	}
+
 	rp.taskList.AddTask(&msg)
+}
+
+func (rp *ResourcePool) restoreResources(ctx *actor.Context, req *sproto.AllocateRequest) (bool, error) {
+	rp.agentStatesCache = rp.fetchAgentStates(ctx)
+	defer func() {
+		rp.agentStatesCache = nil
+	}()
+
+	allocation_id := req.AllocationID
+
+	subq := db.Bun().NewSelect().Model((*task.ResourcesWithState)(nil)).
+		Where("allocation_id = ?", allocation_id).
+		Column("resource_id")
+
+	containerSnapshots := []agent.ContainerSnapshot{}
+	db.Bun().NewSelect().Model(&containerSnapshots).
+		Where("resource_id in (?)", subq).
+		Scan(context.TODO())
+
+	if len(containerSnapshots) == 0 {
+		return false, errors.New("0 container snapshots")
+	}
+
+	resources := make([]sproto.Resources, 0, len(containerSnapshots))
+
+	agentStateMap := map[aproto.ID]*agent.AgentState{}
+
+	for agentRef := range rp.agentStatesCache {
+		agentStateMap[aproto.ID(agentRef.Address().Local())] = rp.agentStatesCache[agentRef]
+	}
+
+	for _, cs := range containerSnapshots {
+		agentState, ok := agentStateMap[cs.AgentID]
+		if !ok {
+			return false, errors.New(fmt.Sprintf("can't find restorable agent %s", cs.AgentID))
+		}
+
+		cr := containerResources{
+			req:         req,
+			agent:       agentState,
+			devices:     cs.Devices,
+			containerID: cs.ID,
+		}
+		resources = append(resources, &cr)
+	}
+
+	allocated := sproto.ResourcesAllocated{
+		ID:           req.AllocationID,
+		ResourcePool: rp.config.PoolName,
+		Resources:    resources,
+		Recovered:    true,
+	}
+
+	rp.taskList.AddTask(req)
+	rp.taskList.SetAllocations(req.TaskActor, &allocated)
+	ctx.Tell(req.TaskActor, allocated)
+
+	return true, nil
 }
 
 func (rp *ResourcePool) receiveSetTaskName(ctx *actor.Context, msg sproto.SetTaskName) {
@@ -138,9 +227,11 @@ func (rp *ResourcePool) receiveSetTaskName(ctx *actor.Context, msg sproto.SetTas
 // allocateResources assigns resources based on a request and notifies the request
 // handler of the assignment. It returns true if it is successfully allocated.
 func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.AllocateRequest) bool {
+	//fmt.Println("allocateResources")
 	fits := findFits(req, rp.agentStatesCache, rp.fittingMethod)
 
 	if len(fits) == 0 {
+		//fmt.Println("no fits")
 		return false
 	}
 
@@ -159,10 +250,20 @@ func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.Alloca
 
 	for _, fit := range fits {
 		containerID := cproto.NewID()
-		resp := ctx.Ask(fit.Agent.Handler, agent.AllocateFreeDevices{
+		fmt.Println("HANDLER: ", fit.Agent.Handler.Address())
+		rr := ctx.Ask(fit.Agent.Handler, agent.AllocateFreeDevices{
 			Slots:       fit.Slots,
 			ContainerID: containerID,
-		}).Get()
+		})
+		if err := rr.Error(); err != nil {
+			fmt.Println("ASK ERROR")
+			fmt.Println(err)
+		}
+		resp := rr.Get()
+		if resp == nil {
+			resp = errors.New("nil AllocateFreeDevices response")
+		}
+
 		switch resp := resp.(type) {
 		case agent.AllocateFreeDevicesResponse:
 			devices := resp.Devices
@@ -178,6 +279,11 @@ func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.Alloca
 			rollback = true
 			return false
 		default:
+			if resp == nil {
+				fmt.Println("resp is nil")
+			} else {
+				fmt.Printf("resp: %+v", resp)
+			}
 			panic(fmt.Sprintf("bad AllocateFreeDevices response: %s", resp))
 		}
 	}
@@ -372,6 +478,9 @@ func (rp *ResourcePool) Receive(ctx *actor.Context) error {
 			}()
 
 			toAllocate, toRelease := rp.scheduler.Schedule(rp)
+			fmt.Println("toAllocate", toAllocate)
+			//fmt.Println("toRelease", toRelease)
+			//fmt.Println("agent states", rp.agentStatesCache)
 			for _, req := range toAllocate {
 				rp.allocateResources(ctx, req)
 			}
@@ -438,6 +547,8 @@ func (rp *ResourcePool) receiveAgentMsg(ctx *actor.Context) error {
 		} else {
 			logger.Debug("updating agent")
 		}
+	default:
+		return actor.ErrUnexpectedMessage(ctx)
 	}
 
 	return nil
@@ -624,12 +735,18 @@ func (rp *ResourcePool) updateAgentEndStats(agentID string) error {
 
 func (rp *ResourcePool) fetchAgentStates(ctx *actor.Context) map[*actor.Ref]*agent.AgentState {
 	agents := make([]*actor.Ref, 0, len(rp.agents))
+	fmt.Println("agents count: ", len(rp.agents))
 
 	for k := range rp.agents {
 		agents = append(agents, k)
 	}
 
 	responses := ctx.AskAll(agent.GetAgentState{}, agents...).GetAll()
+	/*
+		if len(responses) > 0 {
+			fmt.Printf("Agents: %+v\n", responses)
+		}
+	*/
 
 	result := make(map[*actor.Ref]*agent.AgentState, len(rp.agents))
 	for ref, msg := range responses {

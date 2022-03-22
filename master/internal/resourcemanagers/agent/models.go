@@ -1,13 +1,31 @@
 package agent
 
 import (
-	"github.com/uptrace/bun"
-
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/aproto"
 	"github.com/determined-ai/determined/master/pkg/cproto"
 	"github.com/determined-ai/determined/master/pkg/device"
+	"github.com/uptrace/bun"
 )
+
+type SlotData struct {
+	Device      device.Device
+	UserEnabled bool
+	Container   *cproto.Container
+}
+
+type AgentSnapshot struct {
+	bun.BaseModel `bun:"table:resourcemanagers_agent_agentstate,alias:rmas"`
+
+	ID               int64       `bun:"id,pk,autoincrement"`
+	AgentID          string      `bun:"agent_id,notnull,unique"`
+	UUID             string      `bun:"uuid,notnull,unique"`
+	ResourcePoolName string      `bun:"resource_pool_name,notnull"`
+	UserEnabled      bool        `bun:"user_enabled"`
+	UserDraining     bool        `bun:"user_draining"`
+	Slots            []SlotData  `bun:"slots"`
+	ZeroSlots        []cproto.ID `bun:"zero_slots"`
+}
 
 // ContainerSnapshot is a database representation of `containerResources`.
 type ContainerSnapshot struct {

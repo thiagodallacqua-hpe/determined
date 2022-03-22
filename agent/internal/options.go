@@ -42,6 +42,8 @@ type Options struct {
 	Security SecurityOptions `json:"security"`
 
 	Fluent FluentOptions `json:"fluent"`
+
+	ContainerAutoRemoveDisabled bool `json:"container_auto_remove_disabled"`
 }
 
 // Validate validates the state of the Options struct.

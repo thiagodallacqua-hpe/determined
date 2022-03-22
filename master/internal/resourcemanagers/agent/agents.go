@@ -34,6 +34,30 @@ type agents struct {
 
 func (a *agents) Receive(ctx *actor.Context) error {
 	switch msg := ctx.Message().(type) {
+	case actor.PreStart:
+		const RESTORE_ENABLED bool = true
+		if RESTORE_ENABLED {
+			// TODO XXX only restore the ones which have some state.
+			agentStates, err := RetrieveAgentStates()
+			if err != nil {
+				ctx.Log().WithError(err).Warnf("failed to retrieve agent states")
+			}
+
+			ctx.Log().Debugf("agent states to restore: %d", len(agentStates))
+			badAgentIds := []AgentID{}
+
+			for agentId, agentState := range agentStates {
+				if _, err := a.createAgentActor(ctx, agentId, "fake", agentState.resourcePoolName, a.opts, &agentState); err != nil {
+					ctx.Log().WithError(err).Warnf("failed to create agent %s", agentId)
+					badAgentIds = append(badAgentIds, agentId)
+				}
+			}
+
+			if len(badAgentIds) > 0 {
+				ctx.Log().Debugf("cleaning %d bad agent states", len(badAgentIds))
+				ClearAgentStates(badAgentIds)
+			}
+		}
 	case api.WebSocketConnected:
 		id := msg.Ctx.QueryParam("id")
 		resourcePool := msg.Ctx.QueryParam("resource_pool")
@@ -69,7 +93,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 		}
 
 		version := msg.Ctx.QueryParam("version")
-		if ref, err := a.createAgentActor(ctx, id, version, resourcePool, a.opts); err != nil {
+		if ref, err := a.createAgentActor(ctx, id, version, resourcePool, a.opts, nil); err != nil {
 			ctx.Respond(err)
 		} else {
 			ctx.Respond(ctx.Ask(ref, msg).Get())
@@ -82,7 +106,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 		ctx.Respond(response)
 	case echo.Context:
 		a.handleAPIRequest(ctx, msg)
-	case actor.PreStart, actor.PostStop:
+	case actor.PostStop:
 	default:
 		return actor.ErrUnexpectedMessage(ctx)
 	}
@@ -91,6 +115,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 
 func (a *agents) createAgentActor(
 	ctx *actor.Context, id, version, resourcePool string, opts *aproto.MasterSetAgentOptions,
+	restoredAgentState *AgentState,
 ) (*actor.Ref, error) {
 	if id == "" {
 		return nil, errors.Errorf("invalid agent id specified: %s", id)
@@ -113,6 +138,7 @@ func (a *agents) createAgentActor(
 		agentReconnectWait:    time.Duration(rpConfig.AgentReconnectWait),
 		agentReattachEnabled:  rpConfig.AgentReattachEnabled,
 		opts:                  opts,
+		agentState:            restoredAgentState,
 	})
 	if !ok {
 		return nil, errors.Errorf("agent already connected: %s", id)

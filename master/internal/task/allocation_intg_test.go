@@ -14,6 +14,7 @@ import (
 	"github.com/determined-ai/determined/master/pkg/actor/actors"
 	"github.com/determined-ai/determined/master/pkg/aproto"
 	"github.com/determined-ai/determined/master/pkg/device"
+	"github.com/determined-ai/determined/master/pkg/tasks"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,6 @@ import (
 	"github.com/determined-ai/determined/master/pkg/etc"
 	detLogger "github.com/determined-ai/determined/master/pkg/logger"
 	"github.com/determined-ai/determined/master/pkg/model"
-	"github.com/determined-ai/determined/master/pkg/tasks"
 )
 
 func TestAllocation(t *testing.T) {
@@ -267,6 +267,7 @@ func setup(t *testing.T) (
 ) {
 	require.NoError(t, etc.SetRootPath("../static/srv"))
 	system := actor.NewSystem("system")
+	InitAllocationMap()
 
 	// mock resource manager.
 	rmImpl := actors.MockActor{Responses: map[string]*actors.MockResponse{}}

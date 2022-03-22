@@ -16,11 +16,16 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/master/pkg/model"
+	log "github.com/sirupsen/logrus"
 )
 
-// initAllocationSessions creates a row in the allocation_sessions table.
+// initAllocationSessions purges sessions of all closed allocations.
 func (db *PgDB) initAllocationSessions() error {
-	_, err := db.sql.Exec("DELETE FROM allocation_sessions")
+	_, err := db.sql.Exec(`
+DELETE FROM allocation_sessions WHERE allocation_id in (
+	SELECT allocation_id FROM allocations
+	WHERE start_time IS NOT NULL AND end_time IS NOT NULL
+)`)
 	return err
 }
 
@@ -166,13 +171,16 @@ func (db *PgDB) AllocationSessionByToken(token string) (*model.AllocationSession
 	var session model.AllocationSession
 	err := v2.Verify(token, db.tokenKeys.PublicKey, &session, nil)
 	if err != nil {
+		log.WithError(err).Debug("failed to verify allocation_session token")
 		return nil, ErrNotFound
 	}
 
 	query := `SELECT * FROM allocation_sessions WHERE id=$1`
 	if err := db.query(query, &session, session.ID); errors.Cause(err) == ErrNotFound {
+		log.WithField("allocation_sessions.id", session.ID).Debug("allocation_session not found")
 		return nil, ErrNotFound
 	} else if err != nil {
+		log.WithError(err).WithField("allocation_sessions.id", session.ID).Debug("failed to lookup allocation_session")
 		return nil, err
 	}
 
@@ -372,7 +380,7 @@ func RecordTaskEndStatsBun(stats *model.TaskStats) error {
 	return err
 }
 
-// EndAllTaskStats called at master starts, in case master previously crushed.
+// EndAllTaskStats called at master starts, in case master previously crashed.
 func (db *PgDB) EndAllTaskStats() error {
 	_, err := db.sql.Exec(`
 UPDATE task_stats SET end_time = greatest(cluster_heartbeat, start_time) FROM cluster_id

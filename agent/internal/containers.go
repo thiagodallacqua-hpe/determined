@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 	"golang.org/x/sys/unix"
 
 	"github.com/determined-ai/determined/master/pkg/actor"
@@ -44,11 +45,15 @@ type containerManager struct {
 	Devices       []device.Device   `json:"devices"`
 
 	fluentPort int
-	docker     *client.Client
+
+	docker *client.Client
 }
 
 type (
 	requestReattachContainers struct {
+		ContainersToReattach []aproto.ContainerReattach
+	}
+	requestRevalidateContainers struct {
 		ContainersToReattach []aproto.ContainerReattach
 	}
 	responseReattachContainers struct {
@@ -117,6 +122,14 @@ func (c *containerManager) Receive(ctx *actor.Context) error {
 		} else {
 			ctx.Respond(responseReattachContainers{ContainersReattached: reattachedContainers})
 		}
+	case requestRevalidateContainers:
+		containers, err := c.revalidateContainers(ctx, msg.ContainersToReattach)
+		if err != nil {
+			ctx.Log().WithError(err).Warn("failed to revalidate containers")
+			ctx.Respond(responseReattachContainers{})
+		} else {
+			ctx.Respond(responseReattachContainers{ContainersReattached: containers})
+		}
 
 	case aproto.ContainerLog, aproto.ContainerStateChanged, model.TaskLog, aproto.ContainerStatsRecord:
 		ctx.Tell(ctx.Self().Parent(), msg)
@@ -174,7 +187,8 @@ func (c *containerManager) handleAPIRequest(ctx *actor.Context, apiCtx echo.Cont
 
 func (c *containerManager) overwriteSpec(cont cproto.Container, spec cproto.Spec) (
 	cproto.Spec, error) {
-	return overwriteSpec(cont, spec, c.GlobalEnvVars, c.Labels, c.fluentPort)
+	autoRemove := !c.Options.ContainerAutoRemoveDisabled
+	return overwriteSpec(cont, spec, c.GlobalEnvVars, c.Labels, c.fluentPort, autoRemove)
 }
 
 func overwriteSpec(
@@ -183,8 +197,9 @@ func overwriteSpec(
 	globalEnvVars []string,
 	labels map[string]string,
 	fluentPort int,
+	autoRemove bool,
 ) (cproto.Spec, error) {
-	spec.RunSpec.HostConfig.AutoRemove = true
+	spec.RunSpec.HostConfig.AutoRemove = autoRemove
 	spec.RunSpec.ContainerConfig.Env = append(
 		spec.RunSpec.ContainerConfig.Env, globalEnvVars...)
 	spec.RunSpec.ContainerConfig.Env = append(
@@ -307,6 +322,7 @@ func (c *containerManager) reattachContainers(
 	if err != nil {
 		return nil, err
 	}
+	ctx.Log().Debug("reattachContainers: running containers: ", maps.Keys(runningContainers))
 
 	for _, expectedSurvivor := range expectedSurvivors {
 		var ack aproto.ContainerReattachAck
@@ -461,4 +477,34 @@ func (c *containerManager) unmakeContainerDockerLabels(ctx *actor.Context, cont 
 		Devices: devices,
 		State:   state,
 	}, nil
+}
+
+func (c *containerManager) revalidateContainers(
+	ctx *actor.Context, expectedSurvivors []aproto.ContainerReattach) (
+	[]aproto.ContainerReattachAck, error) {
+	result := make([]aproto.ContainerReattachAck, 0, len(expectedSurvivors))
+
+	for _, expectedSurvivor := range expectedSurvivors {
+		var ack aproto.ContainerReattachAck
+		cid := expectedSurvivor.Container.ID
+
+		if ref := ctx.Child(cid.String()); ref != nil {
+			container := ctx.Ask(ref, getContainerSummary{}).Get().(cproto.Container)
+			ack = aproto.ContainerReattachAck{
+				Container: container,
+			}
+		} else {
+			ack = aproto.ContainerReattachAck{
+				Container: cproto.Container{ID: cid},
+				Failure: &aproto.ContainerFailure{
+					FailureType: aproto.AgentFailed,
+					ErrMsg:      "failed to restore container on master blip",
+				},
+			}
+		}
+
+		result = append(result, ack)
+	}
+
+	return result, nil
 }

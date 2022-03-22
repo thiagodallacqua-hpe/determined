@@ -198,6 +198,12 @@ const (
 
 	// AgentError denotes that the agent failed to launch the container.
 	AgentError = FailureType("agent failed to launch the container")
+
+	// RestoreError denotes a failure to restore a running allocation on master blip.
+	RestoreError = FailureType("RM failed to restore the allocation")
+
+	// UnknownError denotes an internal error that did not map to a know failure type.
+	UnknownError
 )
 
 // FromContainerFailureType converts an aproto.FailureType to a FailureType. This mapping is not
