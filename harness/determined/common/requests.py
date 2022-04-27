@@ -37,6 +37,7 @@ def request(method: str, url: str, **kwargs: Any) -> requests.Response:
     max_retries = kwargs.pop("max_retries", dict(
         total=20,
         backoff_factor=.5,
+        allowed_methods=False,
     ))
     with Session(server_hostname, max_retries) as session:
         out = session.request(method=method, url=url, **kwargs)  # type: requests.Response

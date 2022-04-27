@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -126,6 +127,7 @@ func (c *containerActor) Receive(ctx *actor.Context) error {
 		c.containerStarted(ctx, aproto.ContainerStarted{ContainerInfo: *c.containerInfo})
 
 	case containerTerminated:
+		fmt.Println("containerTerminated")
 		c.containerStopped(ctx, aproto.ContainerExited(msg.ExitCode))
 		ctx.Self().Stop()
 
@@ -140,6 +142,7 @@ func (c *containerActor) Receive(ctx *actor.Context) error {
 				msg := "attempting to stop container %s while in [%s] state"
 				ctx.Log().Infof(msg, c.ID, c.State)
 				ctx.Self().Stop()
+				fmt.Println("signalContainer")
 				c.containerStopped(ctx,
 					aproto.ContainerError(aproto.ContainerAborted, fmt.Errorf(msg, c.ID, c.State)))
 			default:
@@ -168,10 +171,12 @@ func (c *containerActor) Receive(ctx *actor.Context) error {
 	case actor.ChildStopped:
 
 	case actor.ChildFailed:
+		fmt.Println("ChildFailed")
 		c.containerStopped(ctx, aproto.ContainerError(aproto.ContainerFailed, msg.Error))
 		return msg.Error
 
 	case dockerErr:
+		fmt.Println("dockerErr")
 		c.containerStopped(ctx, aproto.ContainerError(aproto.ContainerFailed, msg.Error))
 		return msg.Error
 
@@ -241,6 +246,7 @@ func (c *containerActor) containerStarted(ctx *actor.Context, started aproto.Con
 }
 
 func (c *containerActor) containerStopped(ctx *actor.Context, stopped aproto.ContainerStopped) {
+	debug.PrintStack()
 	newState := cproto.Terminated
 	if c.State == newState {
 		ctx.Log().Infof("attempted transition of state from %s to %s", newState, newState)
