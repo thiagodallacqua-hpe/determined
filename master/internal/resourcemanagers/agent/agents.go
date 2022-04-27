@@ -92,6 +92,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			return nil
 		}
 
+		// TODO(ilia): Move version to AgentStarted message and set it within the actor.
 		version := msg.Ctx.QueryParam("version")
 		if ref, err := a.createAgentActor(ctx, id, version, resourcePool, a.opts, nil); err != nil {
 			ctx.Respond(err)

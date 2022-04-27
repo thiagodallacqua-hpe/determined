@@ -11,7 +11,7 @@ import (
 type SlotData struct {
 	Device      device.Device
 	UserEnabled bool
-	Container   *cproto.Container
+	ContainerID *cproto.ID
 }
 
 type AgentSnapshot struct {
@@ -24,7 +24,7 @@ type AgentSnapshot struct {
 	UserEnabled      bool        `bun:"user_enabled"`
 	UserDraining     bool        `bun:"user_draining"`
 	Slots            []SlotData  `bun:"slots"`
-	ZeroSlots        []cproto.ID `bun:"zero_slots"`
+	Containers       []cproto.ID `bun:"containers"`
 }
 
 // ContainerSnapshot is a database representation of `containerResources`.

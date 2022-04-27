@@ -6,5 +6,5 @@ CREATE TABLE resourcemanagers_agent_agentstate (
 	user_enabled boolean,
 	user_draining boolean,
 	slots jsonb,
-	zero_slots jsonb
+	containers jsonb
 );

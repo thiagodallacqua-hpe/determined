@@ -433,7 +433,6 @@ func makeContainerDockerLabels(cont cproto.Container) map[string]string {
 	labels := map[string]string{}
 	labels[dockerContainerVersionLabel] = dockerContainerVersionValue
 	labels[dockerContainerIDLabel] = cont.ID.String()
-	labels[dockerContainerParentLabel] = cont.Parent.String()
 	var slotIds []string
 	for _, d := range cont.Devices {
 		slotIds = append(slotIds, strconv.Itoa(int(d.ID)))
@@ -473,7 +472,6 @@ func (c *containerManager) unmakeContainerDockerLabels(ctx *actor.Context, cont 
 
 	return &cproto.Container{
 		ID:      cproto.ID(cont.Labels[dockerContainerIDLabel]),
-		Parent:  actor.AddrFromString(cont.Labels[dockerContainerParentLabel]),
 		Devices: devices,
 		State:   state,
 	}, nil

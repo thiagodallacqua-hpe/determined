@@ -116,9 +116,8 @@ func newPod(
 	fluentConfig FluentConfig,
 ) *pod {
 	podContainer := cproto.Container{
-		Parent: msg.TaskActor.Address(),
-		ID:     cproto.ID(msg.Spec.ContainerID),
-		State:  cproto.Assigned,
+		ID:    cproto.ID(msg.Spec.ContainerID),
+		State: cproto.Assigned,
 	}
 	uniqueName := configureUniqueName(msg.Spec, msg.Rank)
 
