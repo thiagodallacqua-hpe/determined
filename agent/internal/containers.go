@@ -199,7 +199,7 @@ func overwriteSpec(
 	fluentPort int,
 	autoRemove bool,
 ) (cproto.Spec, error) {
-	spec.RunSpec.HostConfig.AutoRemove = false // autoRemove
+	spec.RunSpec.HostConfig.AutoRemove = autoRemove
 	spec.RunSpec.ContainerConfig.Env = append(
 		spec.RunSpec.ContainerConfig.Env, globalEnvVars...)
 	spec.RunSpec.ContainerConfig.Env = append(
