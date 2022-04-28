@@ -321,7 +321,7 @@ func (a *Allocation) Receive(ctx *actor.Context) error {
 func (a *Allocation) RequestResources(ctx *actor.Context) error {
 	if a.req.Restore {
 		// Load allocation.
-		fmt.Println("!!!! a.req.Restore")
+		fmt.Println("RequestResources restore")
 		db.Bun().NewSelect().Model(&a.model).
 			Where("allocation_id = ?", a.model.AllocationID).
 			Scan(context.TODO())
@@ -329,11 +329,10 @@ func (a *Allocation) RequestResources(ctx *actor.Context) error {
 		// Insert new allocation.
 		a.setModelState(model.AllocationStatePending)
 
-		fmt.Printf("ADDING ALLOCATION %s REQ: %s\n", a.model.AllocationID, a.req.AllocationID)
+		fmt.Printf("RequestResources adding allocation %s REQ: %s\n", a.model.AllocationID, a.req.AllocationID)
 		if err := a.db.AddAllocation(&a.model); err != nil {
 			return errors.Wrap(err, "saving trial allocation")
 		}
-		fmt.Println("Allocation id 20: ", a.model.AllocationID, a.req.AllocationID)
 	}
 
 	// TODO XXX have RM flag for supporting restore.

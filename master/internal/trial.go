@@ -11,6 +11,7 @@ import (
 
 	"github.com/determined-ai/determined/master/pkg/actor/actors"
 	"github.com/determined-ai/determined/master/pkg/logger"
+	"github.com/determined-ai/determined/master/pkg/mathx"
 	"github.com/determined-ai/determined/master/pkg/ptrs"
 
 	"github.com/pkg/errors"
@@ -127,14 +128,6 @@ func (t *trial) Receive(ctx *actor.Context) error {
 			})
 		}
 		ctx.AddLabels(t.logCtx)
-
-		/*
-			if t.restored {
-				restored, err := t.maybeRestoreAllocation(ctx)
-				if restored && err != nil {
-					return nil
-				}
-			}*/
 
 		return t.maybeAllocateTask(ctx)
 	case actor.PostStop:
@@ -255,7 +248,7 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 	if err != nil {
 		ctx.Log().WithError(err).Warn("failed to restore trial allocation")
 	} else if restoredAllocation != nil {
-		fmt.Println("ACTUALLY RESTORING ALLOCATION???")
+		fmt.Println("RESTORING ALLOCATION")
 		t.allocation, _ = ctx.ActorOf(t.runID, taskAllocator(t.logCtx, sproto.AllocateRequest{
 			AllocationID:      restoredAllocation.AllocationID,
 			TaskID:            t.taskID,
@@ -304,7 +297,6 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 
 		Preemptible: true,
 	}
-	fmt.Println("Allocation id 1: ", ar.AllocationID)
 	t.allocation, _ = ctx.ActorOf(t.runID, taskAllocator(t.logCtx, ar, t.db, t.rm, t.taskLogger))
 
 	return nil
@@ -600,8 +592,7 @@ func (t *trial) maybeRestoreAllocation(ctx *actor.Context) (*model.Allocation, e
 	case openAllocs > 1:
 		const MAX_ALLOCS_TO_LOG int = 3
 		allocIDs := make([]string, 0, MAX_ALLOCS_TO_LOG)
-		// TODO XXX slice mmath.Max
-		for _, alloc := range allocations {
+		for _, alloc := range allocations[0:mathx.Min(len(allocations), MAX_ALLOCS_TO_LOG)] {
 			allocIDs = append(allocIDs, alloc.AllocationID.String())
 		}
 		return nil, errors.New(

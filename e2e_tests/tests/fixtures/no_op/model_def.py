@@ -107,9 +107,6 @@ class NoOpTrialController(det.TrialController):
     def run(self) -> None:
         for w, response_func in self.workloads:
             if w.kind == workload.Workload.Kind.RUN_STEP:
-                # TODO XXX
-                if random.random() < 0.0:
-                    raise ValueError("uh-oh")
                 response = self.train_for_step(w.step_id, w.num_batches)
             elif w.kind == workload.Workload.Kind.COMPUTE_VALIDATION_METRICS:
                 response = self.compute_validation_metrics(w.step_id)
