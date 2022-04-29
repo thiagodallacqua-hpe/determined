@@ -462,7 +462,7 @@ func (a *agent) agentStarted(ctx *actor.Context, agentStarted *aproto.AgentStart
 	a.agentState = NewAgentState(
 		sproto.AddAgent{Agent: ctx.Self(), Label: agentStarted.Label},
 		a.maxZeroSlotContainers)
-	a.agentState.resourcePoolName = a.resourcePoolName // TODO
+	a.agentState.resourcePoolName = a.resourcePoolName // TODO that's where it gets set
 	a.agentState.agentStarted(ctx, agentStarted)
 	ctx.Tell(a.resourcePool, sproto.AddAgent{
 		Agent: ctx.Self(),
@@ -499,14 +499,18 @@ func (a *agent) containerStateChanged(ctx *actor.Context, sc aproto.ContainerSta
 
 func (a *agent) summarize(ctx *actor.Context) model.AgentSummary {
 	// BEGIN DEBUG
-	fmt.Println("AGENT STATE DEVICES: ", a.agentState.Devices)
-	slotStates := []slot{}
-	for _, v := range a.agentState.slotStates {
-		if v != nil {
-			slotStates = append(slotStates, *v)
+	if a.agentState != nil {
+		fmt.Println("AGENT STATE DEVICES: ", a.agentState.Devices)
+		slotStates := []slot{}
+		for _, v := range a.agentState.slotStates {
+			if v != nil {
+				slotStates = append(slotStates, *v)
+			}
 		}
+		fmt.Println("AGENT STATE SLOTS: ", slotStates)
+	} else {
+		fmt.Println("AGENT STATE NIL")
 	}
-	fmt.Println("AGENT STATE SLOTS: ", slotStates)
 	// END DEBUG
 
 	result := model.AgentSummary{

@@ -42,6 +42,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			if err != nil {
 				ctx.Log().WithError(err).Warnf("failed to retrieve agent states")
 			}
+			// TODO XXX set maxZeroSlotContainers from up-to-date RP config.
 
 			ctx.Log().Debugf("agent states to restore: %d", len(agentStates))
 			badAgentIds := []AgentID{}

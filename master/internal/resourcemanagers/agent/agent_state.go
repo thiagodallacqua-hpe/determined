@@ -10,6 +10,7 @@ import (
 	"github.com/uptrace/bun"
 	"golang.org/x/exp/maps"
 
+	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/internal/task"
@@ -413,13 +414,15 @@ func (a *AgentState) snapshot() *AgentSnapshot {
 	container_ids := maps.Keys(a.containerState)
 
 	s := AgentSnapshot{
-		AgentID:          a.Handler.Address().Local(),
-		UUID:             a.uuid.String(),
-		ResourcePoolName: a.resourcePoolName,
-		UserEnabled:      a.enabled,  // TODO: not 100% user-driven
-		UserDraining:     a.draining, // TODO: not 100% user-driven
-		Slots:            slotData,
-		Containers:       container_ids,
+		AgentID:               a.Handler.Address().Local(),
+		UUID:                  a.uuid.String(),
+		ResourcePoolName:      a.resourcePoolName,
+		Label:                 a.Label,
+		UserEnabled:           a.enabled,  // TODO(ilia): save user setting
+		UserDraining:          a.draining, // TODO(ilia): save user setting
+		MaxZeroSlotContainers: a.maxZeroSlotContainers,
+		Slots:                 slotData,
+		Containers:            container_ids,
 	}
 
 	return &s
@@ -506,9 +509,31 @@ func (a *AgentState) clearUnlessRecovered(recovered map[cproto.ID]aproto.Contain
 
 type AgentID = string
 
+func listResourcePoolsWithReattachEnabled() []string {
+	rpConfigList := config.GetMasterConfig().ResourcePools
+	result := make([]string, 0, len(rpConfigList))
+	for _, rpConfig := range rpConfigList {
+		if rpConfig.AgentReattachEnabled {
+			result = append(result, rpConfig.PoolName)
+		}
+	}
+
+	return result
+}
+
 func RetrieveAgentStates() (map[AgentID]AgentState, error) {
+	rpNames := listResourcePoolsWithReattachEnabled()
+	fmt.Println("rpNames", rpNames)
+
+	if len(rpNames) == 0 {
+		return map[AgentID]AgentState{}, nil
+	}
+
 	snapshots := []AgentSnapshot{}
-	if err := db.Bun().NewSelect().Model(&snapshots).Scan(context.TODO()); err != nil {
+	err := db.Bun().NewSelect().Model(&snapshots).
+		Where("resource_pool_name IN (?)", bun.In(rpNames)).
+		Scan(context.TODO())
+	if err != nil {
 		return nil, err
 	}
 
@@ -517,7 +542,7 @@ func RetrieveAgentStates() (map[AgentID]AgentState, error) {
 	for _, s := range snapshots {
 		state, err := NewAgentStateFromSnapshot(s)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to recreate agent state %s", s.AgentID)
+			return nil, fmt.Errorf("failed to recreate agent state %s: %w", s.AgentID, err)
 		}
 
 		result[s.AgentID] = *state
@@ -536,8 +561,6 @@ func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 	slotStates := make(map[device.ID]*slot)
 	devices := make(map[device.Device]*cproto.ID)
 
-	//containerIDs := []cproto.ID{}
-
 	for _, sd := range as.Slots {
 		slotStates[sd.Device.ID] = &slot{
 			device:      sd.Device,
@@ -551,7 +574,6 @@ func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 		}
 		if sd.ContainerID != nil {
 			devices[sd.Device] = sd.ContainerID
-			//containerIDs = append(containerIDs, sd.Container.ID)
 		} else {
 			devices[sd.Device] = nil
 		}
@@ -559,16 +581,14 @@ func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 
 	containerState := make(map[cproto.ID]*cproto.Container)
 	for _, cid := range as.Containers {
-		// TODO(ilia): Restore full from database.
+		// TODO(ilia): Restore full contents from database.
 		containerState[cid] = &cproto.Container{ID: cid}
 	}
 
 	result := AgentState{
-		Label: "", // TODO
-		// TODO for resource pool name
-		// TODO max zero slot containers should come from resource pool I guess
-		maxZeroSlotContainers: 100,
+		maxZeroSlotContainers: as.MaxZeroSlotContainers,
 		resourcePoolName:      as.ResourcePoolName,
+		Label:                 as.Label,
 		uuid:                  parsedUUID,
 		enabled:               as.UserEnabled,
 		draining:              as.UserDraining,

@@ -17,14 +17,16 @@ type SlotData struct {
 type AgentSnapshot struct {
 	bun.BaseModel `bun:"table:resourcemanagers_agent_agentstate,alias:rmas"`
 
-	ID               int64       `bun:"id,pk,autoincrement"`
-	AgentID          string      `bun:"agent_id,notnull,unique"`
-	UUID             string      `bun:"uuid,notnull,unique"`
-	ResourcePoolName string      `bun:"resource_pool_name,notnull"`
-	UserEnabled      bool        `bun:"user_enabled"`
-	UserDraining     bool        `bun:"user_draining"`
-	Slots            []SlotData  `bun:"slots"`
-	Containers       []cproto.ID `bun:"containers"`
+	ID                    int64       `bun:"id,pk,autoincrement"`
+	AgentID               string      `bun:"agent_id,notnull,unique"`
+	UUID                  string      `bun:"uuid,notnull,unique"`
+	ResourcePoolName      string      `bun:"resource_pool_name,notnull"`
+	Label                 string      `bun:"label"`
+	UserEnabled           bool        `bun:"user_enabled"`
+	UserDraining          bool        `bun:"user_draining"`
+	MaxZeroSlotContainers int         `bun:"max_zero_slot_containers"`
+	Slots                 []SlotData  `bun:"slots"`
+	Containers            []cproto.ID `bun:"containers"`
 }
 
 // ContainerSnapshot is a database representation of `containerResources`.
