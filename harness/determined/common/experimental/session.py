@@ -1,10 +1,17 @@
 from typing import Any, Dict, Optional
 
 import requests
+import urllib3
 
 from determined.common import util
 from determined.common.api import authentication, certs, request
 
+
+RETRY = urllib3.util.retry.Retry(
+    total=20,
+    backoff_factor=.5,
+    allowed_methods=False,
+)
 
 class Session:
     def __init__(
@@ -13,11 +20,13 @@ class Session:
         user: Optional[str],
         auth: Optional[authentication.Authentication],
         cert: Optional[certs.Cert],
+        max_retries: Optional[urllib3.util.retry.Retry],
     ) -> None:
         self._master = master or util.get_default_master_address()
         self._user = user
         self._auth = auth
         self._cert = cert
+        self._max_retries = max_retries
 
     def _do_request(
         self,
@@ -40,6 +49,7 @@ class Session:
             cert=self._cert,
             headers=headers,
             timeout=timeout,
+            max_retries=self._max_retries,
         )
 
     def get(

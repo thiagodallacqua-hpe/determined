@@ -4,6 +4,7 @@ A drop-in replacement for requests.request() which supports server name overridi
 from typing import Any, Dict, Optional
 
 import requests
+import urllib3
 
 
 class HTTPAdapter(requests.adapters.HTTPAdapter):
@@ -21,24 +22,19 @@ class HTTPAdapter(requests.adapters.HTTPAdapter):
 
 
 class Session(requests.sessions.Session):
-    def __init__(self, server_hostname: Optional[str], max_retries: Optional[Dict]) -> None:
+    def __init__(self, server_hostname: Optional[str], max_retries: Optional[urllib3.util.retry.Retry]) -> None:
         super().__init__()
         if max_retries is None:
             # Override the https adapter.
             self.mount("https://", HTTPAdapter(server_hostname))
         else:
-            retry = requests.adapters.Retry(**max_retries)
-            self.mount("https://", HTTPAdapter(server_hostname, max_retries=retry))
-            self.mount("http://", requests.adapters.HTTPAdapter(max_retries=retry))
+            self.mount("https://", HTTPAdapter(server_hostname, max_retries=max_retries))
+            self.mount("http://", requests.adapters.HTTPAdapter(max_retries=max_retries))
 
 
 def request(method: str, url: str, **kwargs: Any) -> requests.Response:
     server_hostname = kwargs.pop("server_hostname", None)
-    max_retries = kwargs.pop("max_retries", dict(
-        total=20,
-        backoff_factor=.5,
-        allowed_methods=False,
-    ))
+    max_retries = kwargs.pop("max_retries", None)
     with Session(server_hostname, max_retries) as session:
         out = session.request(method=method, url=url, **kwargs)  # type: requests.Response
         return out
