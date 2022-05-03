@@ -7,6 +7,7 @@ from determined.common import util
 from determined.common.api import authentication, certs, request
 
 
+# TODO(ilia): Make it configurable.
 RETRY = urllib3.util.retry.Retry(
     total=20,
     backoff_factor=.5,
@@ -20,7 +21,7 @@ class Session:
         user: Optional[str],
         auth: Optional[authentication.Authentication],
         cert: Optional[certs.Cert],
-        max_retries: Optional[urllib3.util.retry.Retry],
+        max_retries: Optional[urllib3.util.retry.Retry] = None,
     ) -> None:
         self._master = master or util.get_default_master_address()
         self._user = user
