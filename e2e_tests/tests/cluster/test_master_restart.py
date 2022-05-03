@@ -1,3 +1,4 @@
+import subprocess
 import time
 import logging
 
@@ -77,3 +78,39 @@ def test_master_restart_reattach_recover_experiment(
         managed_cluster.restart_master()
         managed_cluster.restart_agent()
         raise
+
+
+@pytest.mark.managed_devcluster
+def test_master_restart_kill_works(managed_cluster: ManagedCluster) -> None:
+    _sanity_check(managed_cluster)
+
+    try:
+        exp_id = exp.create_experiment(
+            conf.fixtures_path("no_op/single-many-long-steps.yaml"),
+            conf.fixtures_path("no_op"),
+            ["--config", "searcher.max_length.batches=10000", "--config", "max_restarts=0"]
+        )
+
+        exp.wait_for_experiment_workload_progress(exp_id)
+
+        managed_cluster.kill_master()
+        time.sleep(0)
+        managed_cluster.restart_master()
+
+        command = [
+            "det",
+            "-m",
+            conf.make_master_url(),
+            "e",
+            "kill",
+            str(exp_id)
+        ]
+        subprocess.check_call(command)
+
+        exp.wait_for_experiment_state(
+            exp_id, EXP_STATE.STATE_CANCELED, max_wait_secs=10)
+
+        managed_cluster.ensure_agent_ok()
+    except Exception:
+        managed_cluster.restart_master()
+        managed_cluster.restart_agent()
