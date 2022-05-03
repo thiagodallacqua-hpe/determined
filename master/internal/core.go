@@ -554,6 +554,7 @@ func (m *Master) tryRestoreExperiment(sema chan struct{}, wg *sync.WaitGroup, e 
 	defer func() { <-sema }()
 	defer func() { wg.Done() }()
 
+	// restoreExperiments wait for experiment allocations to be initialized.
 	if err := m.restoreExperiment(e); err != nil {
 		log.WithError(err).Errorf("failed to restore experiment: %d", e.ID)
 		e.State = model.ErrorState
@@ -564,7 +565,10 @@ func (m *Master) tryRestoreExperiment(sema chan struct{}, wg *sync.WaitGroup, e 
 	}
 }
 
-// TODO XXX wait only for open experiments-trials.
+// TODO(ilia): Here we wait for all experiments to restore and initialize their allocations before
+// starting any scheduling. This path is better for scheduling fairness.
+// Alternatively, we could wait for experiments with restorable allocations only.
+// This would potentially speed up the startup when there're lots of these.
 func (m *Master) restoreNonTerminalExperiments() error {
 	// Restore non-terminal experiments from the database.
 	// Limit the number of concurrent restores at any time within the system to maxConcurrentRestores.
@@ -586,6 +590,14 @@ func (m *Master) restoreNonTerminalExperiments() error {
 
 	wg.Wait()
 
+	return nil
+}
+
+func (m *Master) closeOpenAllocations() error {
+	allocationIds := task.GetAllAllocationIds()
+	if err := m.db.CloseOpenAllocations(allocationIds); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -853,15 +865,18 @@ func (m *Master) Run(ctx context.Context) error {
 	if err = m.db.FailDeletingExperiment(); err != nil {
 		return err
 	}
+
+	if err = task.CleanupResourcesState(); err != nil {
+		return err
+	}
+
+	if err = m.closeOpenAllocations(); err != nil {
+		return err
+	}
+
 	// TODO XXX crutch: only cleanup ones that has failed to restore.
 	const CLOSE_OPEN_ALLOCATIONS bool = false
 	if CLOSE_OPEN_ALLOCATIONS {
-		if err = m.db.CloseOpenAllocations(); err != nil {
-			return err
-		}
-		if err = task.WipeResourcesState(); err != nil {
-			return err
-		}
 		if err = m.db.EndAllTaskStats(); err != nil {
 			return err
 		}

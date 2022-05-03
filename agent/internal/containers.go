@@ -340,16 +340,17 @@ func (c *containerManager) reattachContainers(
 			ctx.Log().Infof("will reattach container %s", expectedSurvivor.Container.ID)
 			cpc, err := c.reattachContainer(ctx, expectedSurvivor.Container, containerInfo)
 			if err != nil {
+				err = fmt.Errorf("failed to restore info from container labels: %w", err)
 				ack = aproto.ContainerReattachAck{
-					Container: *cpc,
+					Container: cproto.Container{ID: expectedSurvivor.Container.ID},
 					Failure: &aproto.ContainerFailure{
 						FailureType: aproto.AgentFailed,
-						ErrMsg:      "failed to restore info from container labels",
+						ErrMsg:      err.Error(),
 					},
 				}
 			} else {
 				ack = aproto.ContainerReattachAck{
-					Container: cproto.Container{ID: expectedSurvivor.Container.ID},
+					Container: *cpc,
 				}
 			}
 		}
@@ -381,8 +382,10 @@ func (c *containerManager) reattachContainer(
 	// TODO(ilia): Support reattaching containers that have changed state:
 	// - starting -> running,
 	// - running -> terminated.
-	if containerCurrState.State != containerPrevState.State {
-		return nil, errors.New("container has changed state while offline")
+	if containerPrevState.State != "" && containerCurrState.State != containerPrevState.State {
+		return nil, fmt.Errorf(
+			"container has changed state while offline. now: %s, was: %s",
+			containerCurrState.State, containerPrevState.State)
 	}
 
 	cid := containerPrevState.ID
@@ -397,6 +400,7 @@ func (c *containerManager) reattachContainer(
 		}
 		return nil, errors.New(errorMsg)
 	}
+	ctx.Log().Debugf("reattached container actor %s", cid)
 
 	return containerCurrState, nil
 }

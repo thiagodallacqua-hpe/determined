@@ -216,7 +216,7 @@ func (db *PgDB) UpdateAllocationStartTime(a model.Allocation) error {
 
 // CloseOpenAllocations finds all allocations that were open when the master crashed
 // and adds an end time.
-func (db *PgDB) CloseOpenAllocations() error {
+func (db *PgDB) CloseOpenAllocations(exclude []model.AllocationID) error {
 	if _, err := db.sql.Exec(`
 	UPDATE allocations
 	SET start_time = cluster_heartbeat FROM cluster_id
@@ -225,11 +225,23 @@ func (db *PgDB) CloseOpenAllocations() error {
 			"setting start time to cluster heartbeat when it's assigned to zero value")
 	}
 
+	excludedFilter := ""
+	if len(exclude) > 0 {
+		excludeStr := make([]string, 0, len(exclude))
+		for _, v := range exclude {
+			excludeStr = append(excludeStr, v.String())
+		}
+
+		excludedFilter = strings.Join(excludeStr, ",")
+	}
+
 	if _, err := db.sql.Exec(`
 	UPDATE allocations
 	SET end_time = greatest(cluster_heartbeat, start_time)
 	FROM cluster_id
-	WHERE end_time IS NULL`); err != nil {
+	WHERE end_time IS NULL AND
+	($1 = '' OR allocation_id NOT IN (
+		SELECT unnest(string_to_array($1, ','))))`, excludedFilter); err != nil {
 		return errors.Wrap(err, "closing old allocations")
 	}
 	return nil

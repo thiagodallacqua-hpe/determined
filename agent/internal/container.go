@@ -123,6 +123,10 @@ func (c *containerActor) Receive(ctx *actor.Context) error {
 		// Evict the spec from memory due to their potentially massive memory consumption.
 		c.spec = nil
 
+	case containerReattached:
+		c.containerInfo = &msg.containerInfo
+		// TODO(ilia): When do we need to start a checker for these containers?
+
 	case containerReady:
 		c.containerStarted(ctx, aproto.ContainerStarted{ContainerInfo: *c.containerInfo})
 
@@ -155,6 +159,7 @@ func (c *containerActor) Receive(ctx *actor.Context) error {
 			ctx.Tell(ctx.Self(), msg)
 		case cproto.Running:
 			ctx.Log().Infof("sending signal to container: %s", msg.Signal)
+			ctx.Log().Debugf("docker: %v, contInfo: %v", c.docker, c.containerInfo)
 			ctx.Tell(c.docker, signalContainer{dockerID: c.containerInfo.ID, signal: msg.Signal})
 		case cproto.Terminated:
 			ctx.Log().Warnf("ignoring signal, container already terminated: %s", msg.Signal)

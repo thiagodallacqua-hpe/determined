@@ -106,6 +106,8 @@ func (m *Master) restoreExperiment(expModel *model.Experiment) error {
 	}
 
 	experimentActor, _ := m.system.ActorOf(actor.Addr("experiments", e.ID), e)
+	// Wait for experiment to run PreStart, which waits for trial PreStarts,
+	// which in turn waits for allocations to be initialized.
 	m.system.Ask(experimentActor, actor.Ping{}).Get()
 	return nil
 }
