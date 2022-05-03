@@ -298,6 +298,7 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 		Preemptible: true,
 	}
 	t.allocation, _ = ctx.ActorOf(t.runID, taskAllocator(t.logCtx, ar, t.db, t.rm, t.taskLogger))
+	ctx.Ask(t.allocation, actor.Ping{}).Get()
 
 	return nil
 }

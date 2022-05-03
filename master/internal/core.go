@@ -586,9 +586,6 @@ func (m *Master) restoreNonTerminalExperiments() error {
 
 	wg.Wait()
 
-	// TODO XXX crutch: need to wait for experiment to restore trials and check if allocation can be restored.
-	time.Sleep(1 * time.Second)
-
 	return nil
 }
 

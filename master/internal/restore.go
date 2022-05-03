@@ -105,7 +105,8 @@ func (m *Master) restoreExperiment(expModel *model.Experiment) error {
 		e.restored = true
 	}
 
-	m.system.ActorOf(actor.Addr("experiments", e.ID), e)
+	experimentActor, _ := m.system.ActorOf(actor.Addr("experiments", e.ID), e)
+	m.system.Ask(experimentActor, actor.Ping{}).Get()
 	return nil
 }
 
@@ -162,7 +163,9 @@ func (e *experiment) restoreTrial(
 			})
 		}
 	}
-	ctx.ActorOf(searcher.Create.RequestID, t)
+	trialActor, _ := ctx.ActorOf(searcher.Create.RequestID, t)
+	ctx.Ask(trialActor, actor.Ping{}).Get()
+
 	l.Debug("restored trial")
 }
 

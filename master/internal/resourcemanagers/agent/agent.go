@@ -585,7 +585,7 @@ func (a *agent) handleContainersReattached(ctx *actor.Context, agentStarted *apr
 			}
 		} else {
 			ctx.Log().Infof(
-				"agent failed to restore container: %v due to %v",
+				"agent failed to restore container: %v: %v",
 				containerRestored.Container.ID, containerRestored.Failure.ErrMsg)
 		}
 	}
