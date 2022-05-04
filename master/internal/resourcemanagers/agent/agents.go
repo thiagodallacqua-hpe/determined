@@ -50,7 +50,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			badAgentIds := []AgentID{}
 
 			for agentId, agentState := range agentStates {
-				if _, err := a.createAgentActor(ctx, agentId, "fake", agentState.resourcePoolName, a.opts, &agentState); err != nil {
+				if _, err := a.createAgentActor(ctx, agentId, agentState.resourcePoolName, a.opts, &agentState); err != nil {
 					ctx.Log().WithError(err).Warnf("failed to create agent %s", agentId)
 					badAgentIds = append(badAgentIds, agentId)
 				}
@@ -95,9 +95,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			return nil
 		}
 
-		// TODO(ilia): Move version to AgentStarted message and set it within the actor.
-		version := msg.Ctx.QueryParam("version")
-		if ref, err := a.createAgentActor(ctx, id, version, resourcePool, a.opts, nil); err != nil {
+		if ref, err := a.createAgentActor(ctx, id, resourcePool, a.opts, nil); err != nil {
 			ctx.Respond(err)
 		} else {
 			ctx.Respond(ctx.Ask(ref, msg).Get())
@@ -118,7 +116,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 }
 
 func (a *agents) createAgentActor(
-	ctx *actor.Context, id, version, resourcePool string, opts *aproto.MasterSetAgentOptions,
+	ctx *actor.Context, id, resourcePool string, opts *aproto.MasterSetAgentOptions,
 	restoredAgentState *AgentState,
 ) (*actor.Ref, error) {
 	if id == "" {
@@ -137,7 +135,6 @@ func (a *agents) createAgentActor(
 	ref, ok := ctx.ActorOf(id, &agent{
 		resourcePool:          resourcePoolRef,
 		resourcePoolName:      resourcePool,
-		version:               version,
 		maxZeroSlotContainers: rpConfig.MaxZeroSlotContainers,
 		agentReconnectWait:    time.Duration(rpConfig.AgentReconnectWait),
 		agentReattachEnabled:  rpConfig.AgentReattachEnabled,
