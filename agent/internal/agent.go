@@ -355,7 +355,7 @@ func (a *agent) attemptReconnect(ctx *actor.Context) bool {
 	defer func() {
 		a.reconnecting = false
 	}()
-	for i := 0; i < aproto.AgentReconnectAttempts; i++ {
+	for i := 0; i < a.Options.AgentReconnectAttempts; i++ {
 		switch err := a.connect(ctx); {
 		case err == nil:
 			return true
@@ -364,7 +364,7 @@ func (a *agent) attemptReconnect(ctx *actor.Context) bool {
 		default:
 			ctx.Log().WithError(err).Error("error reconnecting to master")
 		}
-		time.Sleep(aproto.AgentReconnectBackoff)
+		time.Sleep(time.Duration(a.Options.AgentReconnectBackoff) * time.Second)
 	}
 	return false
 }
