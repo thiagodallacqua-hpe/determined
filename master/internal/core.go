@@ -874,12 +874,8 @@ func (m *Master) Run(ctx context.Context) error {
 		return err
 	}
 
-	// TODO XXX crutch: only cleanup ones that has failed to restore.
-	const CLOSE_OPEN_ALLOCATIONS bool = false
-	if CLOSE_OPEN_ALLOCATIONS {
-		if err = m.db.EndAllTaskStats(); err != nil {
-			return err
-		}
+	if err = m.db.EndAllTaskStats(); err != nil {
+		return err
 	}
 
 	// The below function call is intentionally made after the call to CloseOpenAllocations.

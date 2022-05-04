@@ -395,8 +395,11 @@ func RecordTaskEndStatsBun(stats *model.TaskStats) error {
 // EndAllTaskStats called at master starts, in case master previously crashed.
 func (db *PgDB) EndAllTaskStats() error {
 	_, err := db.sql.Exec(`
-UPDATE task_stats SET end_time = greatest(cluster_heartbeat, start_time) FROM cluster_id
-WHERE end_time IS NULL`)
+UPDATE task_stats SET end_time = greatest(cluster_heartbeat, task_stats.start_time)
+FROM cluster_id, allocations
+WHERE allocations.allocation_id = task_stats.allocation_id
+AND allocations.end_time IS NOT NULL
+AND task_stats.end_time IS NULL`)
 	return err
 }
 
