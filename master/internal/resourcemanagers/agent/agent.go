@@ -39,7 +39,9 @@ type (
 		started bool
 		version string
 
-		maxZeroSlotContainers int // TODO XXX: can we have it just on the resource pool
+		// TODO(ilia): Maybe maxZeroSlotContainers should be an attribute of a resource pool,
+		// and not be copied to agents.
+		maxZeroSlotContainers int
 		agentReconnectWait    time.Duration
 		agentReattachEnabled  bool
 		// awaitingReconnect et al contain reconnect related state. The pattern for
@@ -111,6 +113,8 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 		if a.agentState != nil { // not nil agentState on PreStart means it's restored.
 			a.started = true
 			a.agentState.Handler = ctx.Self()
+			// Update maxZeroSlotContainers config setting.
+			a.agentState.maxZeroSlotContainers = a.maxZeroSlotContainers
 			a.socketDisconnected(ctx)
 			// TODO(ilia): Adding restored agent here will overcount AgentStarts by maximum
 			// agentReconnectWait if it never reconnects.

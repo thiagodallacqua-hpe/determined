@@ -10,6 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/actor"
 	"github.com/determined-ai/determined/master/pkg/actor/api"
@@ -35,14 +36,15 @@ type agents struct {
 func (a *agents) Receive(ctx *actor.Context) error {
 	switch msg := ctx.Message().(type) {
 	case actor.PreStart:
-		const RESTORE_ENABLED bool = true
-		if RESTORE_ENABLED {
-			// TODO XXX only restore the ones which have some state.
+		reattachEnabled := config.IsAgentRMReattachEnabled()
+		if reattachEnabled {
+			// TODO(ilia): only restore the agents which have some non-zero state.
+			// Currently, if an agent tries to reconnect and it was not restored here,
+			// then it'd be told it must restart and do a fresh connection.
 			agentStates, err := RetrieveAgentStates()
 			if err != nil {
 				ctx.Log().WithError(err).Warnf("failed to retrieve agent states")
 			}
-			// TODO XXX set maxZeroSlotContainers from up-to-date RP config.
 
 			ctx.Log().Debugf("agent states to restore: %d", len(agentStates))
 			badAgentIds := []AgentID{}

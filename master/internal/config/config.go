@@ -382,3 +382,16 @@ func IsUsingKubernetesRM() bool {
 	config := GetMasterConfig()
 	return config.ResourceManager.KubernetesRM != nil
 }
+
+func IsAgentRMReattachEnabled() bool {
+	config := GetMasterConfig()
+	if config.ResourceManager.AgentRM == nil {
+		return false
+	}
+	for _, rpConfig := range config.ResourcePools {
+		if rpConfig.AgentReattachEnabled {
+			return true
+		}
+	}
+	return false
+}

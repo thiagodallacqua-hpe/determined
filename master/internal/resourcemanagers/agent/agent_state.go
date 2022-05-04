@@ -552,7 +552,6 @@ func RetrieveAgentStates() (map[AgentID]AgentState, error) {
 }
 
 func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
-	// TODO XXX
 	parsedUUID, err := uuid.Parse(as.UUID)
 	if err != nil {
 		return nil, err
