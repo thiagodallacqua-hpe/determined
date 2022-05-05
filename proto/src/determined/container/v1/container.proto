@@ -30,6 +30,8 @@ message Container {
   option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
     json_schema: { required: [ "id", "state" ] }
   };
+  // The id of the task that is currently managing this container.
+  string parent = 1;
   // The unique id of this instance of a container.
   string id = 2;
   // The current state that the container is currently in.

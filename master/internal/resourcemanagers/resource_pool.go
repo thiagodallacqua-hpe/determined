@@ -823,6 +823,7 @@ func (c containerResources) Start(
 		TaskActor: c.req.TaskActor,
 		StartContainer: aproto.StartContainer{
 			Container: cproto.Container{
+				Parent:  c.req.TaskActor.Address(),
 				ID:      c.containerID,
 				State:   cproto.Assigned,
 				Devices: c.devices,
