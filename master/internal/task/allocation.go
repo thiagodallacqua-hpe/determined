@@ -321,21 +321,20 @@ func (a *Allocation) Receive(ctx *actor.Context) error {
 func (a *Allocation) RequestResources(ctx *actor.Context) error {
 	if a.req.Restore {
 		// Load allocation.
-		fmt.Println("RequestResources restore")
+		ctx.Log().Debug("RequestResources load allocation")
 		db.Bun().NewSelect().Model(&a.model).
 			Where("allocation_id = ?", a.model.AllocationID).
 			Scan(context.TODO())
 	} else {
 		// Insert new allocation.
-		a.setModelState(model.AllocationStatePending)
+		ctx.Log().Debug("RequestResources add allocation")
 
-		fmt.Printf("RequestResources adding allocation %s REQ: %s\n", a.model.AllocationID, a.req.AllocationID)
+		a.setModelState(model.AllocationStatePending)
 		if err := a.db.AddAllocation(&a.model); err != nil {
 			return errors.Wrap(err, "saving trial allocation")
 		}
 	}
 
-	// TODO XXX have RM flag for supporting restore.
 	a.req.TaskActor = ctx.Self()
 	if err := ctx.Ask(a.rm, a.req).Error(); err != nil {
 		return errors.Wrap(err, "failed to request allocation")
@@ -398,7 +397,6 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 		return errors.Wrapf(err, "appending resources")
 	}
 
-	// TODO XXX this is a stale comment
 	// Get the task spec first, so the trial/task table is populated before allocations.
 	resp := ctx.Ask(ctx.Self().Parent(), BuildTaskSpec{})
 	switch ok, err := resp.ErrorOrTimeout(time.Hour); {
@@ -424,16 +422,6 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 		return errors.Wrap(err, "recording task queued stats")
 	}
 
-	// TODO reuse allocation session?
-	token := ""
-	if !a.req.Restore {
-		token2, err := a.db.StartAllocationSession(a.model.AllocationID)
-		if err != nil {
-			return errors.Wrap(err, "starting a new allocation session")
-		}
-		token = token2
-	}
-
 	if a.req.Preemptible {
 		a.preemption = NewPreemption(a.model.AllocationID)
 	}
@@ -444,7 +432,11 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 	}
 
 	if !a.req.Restore {
-		// TODO don't start when they're already started
+		token, err := a.db.StartAllocationSession(a.model.AllocationID)
+		if err != nil {
+			return errors.Wrap(err, "starting a new allocation session")
+		}
+
 		for cID, r := range a.resources {
 			if err := r.Start(ctx, a.logCtx, spec, sproto.ResourcesRuntimeInfo{
 				Token:        token,
@@ -455,6 +447,7 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 			}
 		}
 	}
+
 	a.resourcesStarted = true
 	a.sendEvent(ctx, sproto.Event{AssignedEvent: &msg})
 	return nil
@@ -594,6 +587,7 @@ func (a *Allocation) ResourcesStateChanged(
 }
 
 func (a *Allocation) ResourceFailure(ctx *actor.Context, msg sproto.ResourcesFailure) {
+	ctx.Log().Debugf("allocation resource failure")
 	a.setMostProgressedModelState(model.AllocationStateTerminating)
 
 	if err := a.db.UpdateAllocationState(a.model); err != nil {
@@ -602,7 +596,6 @@ func (a *Allocation) ResourceFailure(ctx *actor.Context, msg sproto.ResourcesFai
 
 	a.model.EndTime = cluster.TheLastBootClusterHeartbeat()
 
-	fmt.Println("COMPLETING ALLOCATION", a.req.AllocationID, a.model.AllocationID, a.model.EndTime)
 	if err := a.db.CompleteAllocation(&a.model); err != nil {
 		ctx.Log().WithError(err).Error("failed to mark allocation completed")
 	}

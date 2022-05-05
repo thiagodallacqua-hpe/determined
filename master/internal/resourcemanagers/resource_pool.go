@@ -7,6 +7,7 @@ import (
 
 	"github.com/determined-ai/determined/master/pkg/logger"
 	"github.com/determined-ai/determined/master/pkg/model"
+	"golang.org/x/exp/maps"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -476,9 +477,6 @@ func (rp *ResourcePool) Receive(ctx *actor.Context) error {
 			}()
 
 			toAllocate, toRelease := rp.scheduler.Schedule(rp)
-			fmt.Println("toAllocate", toAllocate)
-			//fmt.Println("toRelease", toRelease)
-			//fmt.Println("agent states", rp.agentStatesCache)
 			for _, req := range toAllocate {
 				rp.allocateResources(ctx, req)
 			}
@@ -732,19 +730,9 @@ func (rp *ResourcePool) updateAgentEndStats(agentID string) error {
 }
 
 func (rp *ResourcePool) fetchAgentStates(ctx *actor.Context) map[*actor.Ref]*agent.AgentState {
-	agents := make([]*actor.Ref, 0, len(rp.agents))
-	fmt.Println("agents count: ", len(rp.agents))
-
-	for k := range rp.agents {
-		agents = append(agents, k)
-	}
+	agents := maps.Keys(rp.agents)
 
 	responses := ctx.AskAll(agent.GetAgentState{}, agents...).GetAll()
-	/*
-		if len(responses) > 0 {
-			fmt.Printf("Agents: %+v\n", responses)
-		}
-	*/
 
 	result := make(map[*actor.Ref]*agent.AgentState, len(rp.agents))
 	for ref, msg := range responses {

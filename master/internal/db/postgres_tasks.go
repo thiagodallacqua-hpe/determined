@@ -50,7 +50,7 @@ EXISTS(
 	return exists, err
 }
 
-// AddTask persists the existence of a task.
+// AddTask UPSERT's the existence of a task.
 func (db *PgDB) AddTask(t *model.Task) error {
 	if _, err := db.sql.NamedExec(`
 INSERT INTO tasks (task_id, task_type, start_time, job_id, log_version)

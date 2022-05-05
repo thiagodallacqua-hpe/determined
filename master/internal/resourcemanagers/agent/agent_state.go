@@ -601,7 +601,6 @@ func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 }
 
 func (a *AgentState) restoreContainersField() error {
-	// TODO XXX restore from... addresses?
 	containerIDs := []cproto.ID{}
 
 	for k := range a.Devices {

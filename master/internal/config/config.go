@@ -383,6 +383,7 @@ func IsUsingKubernetesRM() bool {
 	return config.ResourceManager.KubernetesRM != nil
 }
 
+// IsAgentRMReattachEnabled returns whether the container reattachment is enabled on AgentRM.
 func IsAgentRMReattachEnabled() bool {
 	config := GetMasterConfig()
 	if config.ResourceManager.AgentRM == nil {
@@ -394,4 +395,10 @@ func IsAgentRMReattachEnabled() bool {
 		}
 	}
 	return false
+}
+
+// IsReattachEnabled returns whether the container reattachment is enabled, e.g. for trials
+// to decide whether to try to restore open allocations.
+func IsReattachEnabled() bool {
+	return IsAgentRMReattachEnabled()
 }

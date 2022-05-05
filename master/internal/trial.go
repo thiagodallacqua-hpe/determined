@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/task"
 
 	"github.com/determined-ai/determined/master/pkg/actor/actors"
@@ -248,8 +249,7 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 	if err != nil {
 		ctx.Log().WithError(err).Warn("failed to restore trial allocation")
 	} else if restoredAllocation != nil {
-		fmt.Println("RESTORING ALLOCATION")
-		t.allocation, _ = ctx.ActorOf(t.runID, taskAllocator(t.logCtx, sproto.AllocateRequest{
+		ar := sproto.AllocateRequest{
 			AllocationID:      restoredAllocation.AllocationID,
 			TaskID:            t.taskID,
 			JobID:             t.jobID,
@@ -267,17 +267,17 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 
 			Preemptible: true,
 			Restore:     true,
-		}, t.db, t.rm, t.taskLogger))
+		}
+		ctx.Log().
+			WithField("allocation-id", ar.AllocationID).
+			Infof("starting restored trial allocation")
+		t.allocation, _ = ctx.ActorOf(t.runID, taskAllocator(t.logCtx, ar, t.db, t.rm, t.taskLogger))
 		return nil
 	}
 
-	// TODO XXX upsert task instead?
-	if !t.restored || true {
-		t.addTask()
-	}
-
+	t.addTask()
 	t.runID++
-	fmt.Println("STARTING NEW ALLOCATION")
+
 	ar := sproto.AllocateRequest{
 		AllocationID:      model.AllocationID(fmt.Sprintf("%s.%d", t.taskID, t.runID)),
 		TaskID:            t.taskID,
@@ -297,6 +297,11 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 
 		Preemptible: true,
 	}
+
+	ctx.Log().
+		WithField("allocation-id", ar.AllocationID).
+		Debugf("starting new trial allocation")
+
 	t.allocation, _ = ctx.ActorOf(t.runID, taskAllocator(t.logCtx, ar, t.db, t.rm, t.taskLogger))
 	ctx.Ask(t.allocation, actor.Ping{}).Get()
 
@@ -568,7 +573,7 @@ func mustParseTrialRunID(child *actor.Ref) int {
 }
 
 func (t *trial) maybeRestoreAllocation(ctx *actor.Context) (*model.Allocation, error) {
-	if !t.restored {
+	if !t.restored || !config.IsReattachEnabled() {
 		return nil, nil
 	}
 
