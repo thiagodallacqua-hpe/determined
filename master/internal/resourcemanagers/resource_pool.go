@@ -226,11 +226,9 @@ func (rp *ResourcePool) receiveSetTaskName(ctx *actor.Context, msg sproto.SetTas
 // allocateResources assigns resources based on a request and notifies the request
 // handler of the assignment. It returns true if it is successfully allocated.
 func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.AllocateRequest) bool {
-	//fmt.Println("allocateResources")
 	fits := findFits(req, rp.agentStatesCache, rp.fittingMethod)
 
 	if len(fits) == 0 {
-		//fmt.Println("no fits")
 		return false
 	}
 
@@ -249,18 +247,18 @@ func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.Alloca
 
 	for _, fit := range fits {
 		containerID := cproto.NewID()
-		fmt.Println("HANDLER: ", fit.Agent.Handler.Address())
 		rr := ctx.Ask(fit.Agent.Handler, agent.AllocateFreeDevices{
 			Slots:       fit.Slots,
 			ContainerID: containerID,
 		})
+		var resp actor.Message
 		if err := rr.Error(); err != nil {
-			fmt.Println("ASK ERROR")
-			fmt.Println(err)
-		}
-		resp := rr.Get()
-		if resp == nil {
-			resp = errors.New("nil AllocateFreeDevices response")
+			resp = errors.New("AllocateFreeDevices ask error")
+		} else {
+			resp = rr.Get()
+			if resp == nil {
+				resp = errors.New("nil AllocateFreeDevices response")
+			}
 		}
 
 		switch resp := resp.(type) {
@@ -278,12 +276,7 @@ func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.Alloca
 			rollback = true
 			return false
 		default:
-			if resp == nil {
-				fmt.Println("resp is nil")
-			} else {
-				fmt.Printf("resp: %+v", resp)
-			}
-			panic(fmt.Sprintf("bad AllocateFreeDevices response: %s", resp))
+			panic(fmt.Sprintf("bad AllocateFreeDevices response: %+v", resp))
 		}
 	}
 

@@ -410,7 +410,6 @@ func (t *trial) buildTaskSpec(ctx *actor.Context) (tasks.TaskSpec, error) {
 
 // allocationExited cleans up after an allocation exit and exits permanently or reallocates.
 func (t *trial) allocationExited(ctx *actor.Context, exit *task.AllocationExited) error {
-	fmt.Println("allocation exited")
 	if err := t.allocation.AwaitTermination(); err != nil {
 		ctx.Log().WithError(err).Error("trial allocation failed")
 	}

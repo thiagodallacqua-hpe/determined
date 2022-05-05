@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
 	"golang.org/x/exp/maps"
 
@@ -246,7 +247,7 @@ func (a *AgentState) agentStarted(ctx *actor.Context, agentStarted *aproto.Agent
 	}
 
 	if err := a.persist(); err != nil {
-		fmt.Println("PERSIST FAILURE")
+		ctx.Log().Warnf("agentStarted persist failure")
 	}
 }
 
@@ -268,7 +269,7 @@ func (a *AgentState) containerStateChanged(ctx *actor.Context, msg aproto.Contai
 	}
 
 	if err := a.persist(); err != nil {
-		fmt.Println("PERSIST FAILURE")
+		ctx.Log().Warnf("containerStateChanged persist failure")
 	}
 
 	updateContainerState(&msg.Container)
@@ -302,9 +303,11 @@ func (a *AgentState) startContainer(ctx *actor.Context, msg sproto.StartTaskCont
 	}
 
 	a.containerAllocation[msg.Container.ID] = msg.TaskActor
+
 	if err := a.persist(); err != nil {
-		fmt.Println("PERSIST FAILURE")
+		ctx.Log().Warnf("startContainer persist failure")
 	}
+
 	updateContainerState(&msg.StartContainer.Container)
 
 	return nil
@@ -445,7 +448,7 @@ func (a *AgentState) restore() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("restored: ", snapshot)
+	log.Debugf("restored agent state snapshot: %v", snapshot)
 
 	return nil
 }
@@ -457,7 +460,6 @@ func (a *AgentState) delete() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("deleted agent state:", a.Handler.Address().Local())
 	return nil
 }
 
@@ -523,7 +525,6 @@ func listResourcePoolsWithReattachEnabled() []string {
 
 func RetrieveAgentStates() (map[AgentID]AgentState, error) {
 	rpNames := listResourcePoolsWithReattachEnabled()
-	fmt.Println("rpNames", rpNames)
 
 	if len(rpNames) == 0 {
 		return map[AgentID]AgentState{}, nil
