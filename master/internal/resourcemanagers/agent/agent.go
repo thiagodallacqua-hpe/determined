@@ -419,7 +419,6 @@ func (a *agent) handleIncomingWSMessage(ctx *actor.Context, msg aproto.MasterMes
 		if !a.started {
 			a.agentStarted(ctx, msg.AgentStarted)
 		}
-		// TODO XXX set version
 
 		a.started = true
 
@@ -433,8 +432,12 @@ func (a *agent) handleIncomingWSMessage(ctx *actor.Context, msg aproto.MasterMes
 		a.containerStateChanged(ctx, *msg.ContainerStateChanged)
 	case msg.ContainerLog != nil:
 		ref, ok := a.agentState.containerAllocation[msg.ContainerLog.Container.ID]
-		check.Panic(check.True(ok,
-			"container not allocated to agent: container %s", msg.ContainerLog.Container.ID))
+		if !ok {
+			containerID := msg.ContainerLog.Container.ID
+			ctx.Log().WithField("container-id", containerID).Warnf(
+				"received ContainerLog from container not allocated to agent: "+
+					"container %s, message: %v", containerID, msg.ContainerLog)
+		}
 		ctx.Tell(ref, sproto.ContainerLog{
 			Container:   msg.ContainerLog.Container,
 			Timestamp:   msg.ContainerLog.Timestamp,
@@ -480,8 +483,17 @@ func (a *agent) agentStarted(ctx *actor.Context, agentStarted *aproto.AgentStart
 }
 
 func (a *agent) containerStateChanged(ctx *actor.Context, sc aproto.ContainerStateChanged) {
-	//a.agentState.restoreContainersField()
 	taskActor, ok := a.agentState.containerAllocation[sc.Container.ID]
+
+	// We may receieve late terminations when reconnected agent is cleaning up
+	// terminated containers.
+	if !ok && sc.Container.State != cproto.Terminated {
+		containerID := sc.Container.ID
+		ctx.Log().WithField("container-id", containerID).Warnf(
+			"received ContainerStateChanged from container not allocated to agent: "+
+				"container %s, message: %v", containerID, sc)
+		return
+	}
 	check.Panic(check.True(ok, "container not allocated to agent: container %s", sc.Container.ID))
 
 	switch sc.Container.State {

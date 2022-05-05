@@ -103,10 +103,9 @@ func (rp *ResourcePool) setupProvisioner(ctx *actor.Context) error {
 
 func (rp *ResourcePool) allocateRequest(ctx *actor.Context, msg sproto.AllocateRequest) {
 	rp.notifyOnStop(ctx, msg.TaskActor, sproto.ResourcesReleased{TaskActor: msg.TaskActor})
-	//fmt.Println("ALLOCATE REQUEST", msg.AllocationID, msg.TaskID)
+	log := ctx.Log().WithField("allocation-id", msg.AllocationID)
 
 	if len(msg.AllocationID) == 0 {
-		//fmt.Println("GENERATING ALLOCATION ID")
 		msg.AllocationID = model.AllocationID(uuid.New().String())
 	}
 	if msg.Group == nil {
@@ -117,7 +116,7 @@ func (rp *ResourcePool) allocateRequest(ctx *actor.Context, msg sproto.AllocateR
 		msg.Name = "Unnamed Task"
 	}
 
-	ctx.Log().Infof(
+	log.Infof(
 		"resources are requested by %s (Allocation ID: %s)",
 		msg.TaskActor.Address(), msg.AllocationID,
 	)
@@ -130,16 +129,15 @@ func (rp *ResourcePool) allocateRequest(ctx *actor.Context, msg sproto.AllocateR
 	}
 
 	if msg.Restore {
-		// TODO XXX check if it can be restored.
 		succ, err := rp.restoreResources(ctx, &msg)
 		if err != nil || !succ {
 			if err != nil {
-				ctx.Log().WithError(err).Error("failed to restore resources...")
+				log.WithError(err).Error("error restoring resources")
+			} else {
+				log.Info("failed to restore resources")
 			}
 
-			fmt.Println("TODO XXX failed to restore resources")
 			// Clear out the state / close and terminate the allocation.
-
 			errMsg := "failed to restore"
 			if err != nil {
 				errMsg = err.Error()
