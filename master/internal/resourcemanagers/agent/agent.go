@@ -486,13 +486,15 @@ func (a *agent) agentStarted(ctx *actor.Context, agentStarted *aproto.AgentStart
 func (a *agent) containerStateChanged(ctx *actor.Context, sc aproto.ContainerStateChanged) {
 	taskActor, ok := a.agentState.containerAllocation[sc.Container.ID]
 
-	// We may receieve late terminations when reconnected agent is cleaning up
-	// terminated containers.
-	if !ok && sc.Container.State != cproto.Terminated {
-		containerID := sc.Container.ID
-		ctx.Log().WithField("container-id", containerID).Warnf(
-			"received ContainerStateChanged from container not allocated to agent: "+
-				"container %s, message: %v", containerID, sc)
+	if !ok {
+		// We may receieve late terminations when reconnected agent is cleaning up
+		// terminated containers.
+		if sc.Container.State != cproto.Terminated {
+			containerID := sc.Container.ID
+			ctx.Log().WithField("container-id", containerID).Warnf(
+				"received ContainerStateChanged from container not allocated to agent: "+
+					"container %s, message: %v", containerID, sc)
+		}
 		return
 	}
 	check.Panic(check.True(ok, "container not allocated to agent: container %s", sc.Container.ID))

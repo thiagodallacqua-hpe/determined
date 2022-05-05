@@ -389,7 +389,7 @@ func (a *Allocation) ResourcesAllocated(ctx *actor.Context, msg sproto.Resources
 
 		a.setModelState(model.AllocationStateAssigned)
 	} else {
-		fmt.Println("restored resourcesallocated state: ", a.getModelState())
+		ctx.Log().Debugf("ResourcesAllocated restored state: %s", a.getModelState())
 	}
 
 	a.setModelState(model.AllocationStateAssigned)
