@@ -382,8 +382,9 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 					ContainerStopped: &stopped,
 				})
 			}
+
+			a.agentState.delete()
 		}
-		a.agentState.delete()
 		ctx.Tell(a.resourcePool, sproto.RemoveAgent{Agent: ctx.Self()})
 	default:
 		fmt.Println("UNEXPECTED MESSAGE", msg, reflect.TypeOf(msg))
