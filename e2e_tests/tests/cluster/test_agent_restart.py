@@ -1,5 +1,4 @@
 import json
-import os
 import subprocess
 import time
 from pathlib import Path
@@ -13,7 +12,6 @@ from tests import experiment as exp
 
 from .managed_cluster import ManagedCluster
 from .utils import get_command_info, run_command, wait_for_command_state
-
 
 DEVCLUSTER_CONFIG_ROOT_PATH = conf.PROJECT_ROOT_PATH.joinpath(".circleci/devcluster")
 DEVCLUSTER_REATTACH_OFF_CONFIG_PATH = DEVCLUSTER_CONFIG_ROOT_PATH / "double.devcluster.yaml"

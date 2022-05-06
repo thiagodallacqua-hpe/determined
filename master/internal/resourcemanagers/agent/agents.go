@@ -100,7 +100,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			return nil
 		}
 
-		if ref, err := a.createAgentActor(ctx, id, resourcePool, a.opts, nil); err != nil {
+		if ref, err := a.createAgentActor(ctx, AgentID(id), resourcePool, a.opts, nil); err != nil {
 			ctx.Respond(err)
 		} else {
 			ctx.Respond(ctx.Ask(ref, msg).Get())
@@ -121,7 +121,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 }
 
 func (a *agents) createAgentActor(
-	ctx *actor.Context, id, resourcePool string, opts *aproto.MasterSetAgentOptions,
+	ctx *actor.Context, id AgentID, resourcePool string, opts *aproto.MasterSetAgentOptions,
 	restoredAgentState *AgentState,
 ) (*actor.Ref, error) {
 	if id == "" {

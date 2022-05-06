@@ -77,6 +77,10 @@ func (a *AgentState) string() string {
 	return a.Handler.Address().Local()
 }
 
+func (a *AgentState) agentID() AgentID {
+	return AgentID(a.string())
+}
+
 // NumSlots returns the total number of slots available.
 func (a *AgentState) NumSlots() int {
 	switch {
@@ -421,7 +425,7 @@ func (a *AgentState) snapshot() *AgentSnapshot {
 	containerIds := maps.Keys(a.containerState)
 
 	s := AgentSnapshot{
-		AgentID:               a.Handler.Address().Local(),
+		AgentID:               a.agentID(),
 		UUID:                  a.uuid.String(),
 		ResourcePoolName:      a.resourcePoolName,
 		Label:                 a.Label,
@@ -511,9 +515,6 @@ func (a *AgentState) clearUnlessRecovered(
 
 	return nil
 }
-
-// AgentID is the agent id type. TODO XXX.
-type AgentID = string
 
 func listResourcePoolsWithReattachEnabled() []string {
 	rpConfigList := config.GetMasterConfig().ResourcePools
