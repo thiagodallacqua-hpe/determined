@@ -15,8 +15,9 @@ import (
 	"github.com/o1egl/paseto"
 	"github.com/pkg/errors"
 
-	"github.com/determined-ai/determined/master/pkg/model"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/determined-ai/determined/master/pkg/model"
 )
 
 // initAllocationSessions purges sessions of all closed allocations.
@@ -180,7 +181,8 @@ func (db *PgDB) AllocationSessionByToken(token string) (*model.AllocationSession
 		log.WithField("allocation_sessions.id", session.ID).Debug("allocation_session not found")
 		return nil, ErrNotFound
 	} else if err != nil {
-		log.WithError(err).WithField("allocation_sessions.id", session.ID).Debug("failed to lookup allocation_session")
+		log.WithError(err).WithField("allocation_sessions.id", session.ID).
+			Debug("failed to lookup allocation_session")
 		return nil, err
 	}
 

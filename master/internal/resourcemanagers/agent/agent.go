@@ -386,7 +386,9 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 				})
 			}
 
-			a.agentState.delete()
+			if err := a.agentState.delete(); err != nil {
+				ctx.Log().WithError(err).Warnf("failed to delete agent state")
+			}
 		}
 		ctx.Tell(a.resourcePool, sproto.RemoveAgent{Agent: ctx.Self()})
 	default:
@@ -399,7 +401,7 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 
 func (a *agent) bufferForRecovery(ctx *actor.Context, msg interface{}) {
 	// This explodes the debug logs when msg is big
-	//ctx.Log().WithField("msg", msg).Debugf("buffering message until agent reconnects")
+	// ctx.Log().WithField("msg", msg).Debugf("buffering message until agent reconnects")
 	ctx.Log().Debugf("buffering message until agent reconnects")
 	a.reconnectBacklog = append(a.reconnectBacklog, msg)
 }
@@ -563,31 +565,14 @@ func (a *agent) gatherContainersToReattach(ctx *actor.Context) []aproto.Containe
 		result = append(result, aproto.ContainerReattach{Container: *container})
 	}
 
-	/*  OLD
-	for containerID, allocation := range a.agentState.containers {
-		resp := ctx.Ask(allocation, sproto.GetResourcesContainerState{
-			ResourcesID: sproto.ResourcesID(containerID),
-		})
-		switch {
-		case resp.Error() != nil:
-			ctx.Log().Warnf(
-				"allocation GetTaskContainerState id: %s, got error: %s", containerID, resp.Error())
-		case resp.Get() == nil:
-			ctx.Log().Warnf("allocation GetTaskContainerState id: %s, is nil", containerID)
-		default:
-			containerState := resp.Get().(cproto.Container)
-			result = append(result, aproto.ContainerReattach{Container: containerState})
-		}
-	}
-	*/
 	fmt.Println("gatherContainersToReattach: ", result)
 	return result
 }
 
-func (a *agent) handleContainersReattached(ctx *actor.Context, agentStarted *aproto.AgentStarted) error {
-	ctx.Log().Debugf("agent ContainersRestored ip: %v , containers: %v",
-		a.address, agentStarted.ContainersReattached)
-	fmt.Println("handleContainersReattached containerState", a.agentState.containerState, a.agentState.containerAllocation)
+func (a *agent) handleContainersReattached(
+	ctx *actor.Context, agentStarted *aproto.AgentStarted) error {
+	ctx.Log().Debugf("agent ContainersRestored ip: %v , reattached: %v, allocations: %v",
+		a.address, agentStarted.ContainersReattached, maps.Keys(a.agentState.containerState))
 
 	recovered := map[cproto.ID]aproto.ContainerReattachAck{}
 

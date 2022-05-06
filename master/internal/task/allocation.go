@@ -322,9 +322,12 @@ func (a *Allocation) RequestResources(ctx *actor.Context) error {
 	if a.req.Restore {
 		// Load allocation.
 		ctx.Log().Debug("RequestResources load allocation")
-		db.Bun().NewSelect().Model(&a.model).
+		err := db.Bun().NewSelect().Model(&a.model).
 			Where("allocation_id = ?", a.model.AllocationID).
 			Scan(context.TODO())
+		if err != nil {
+			return errors.Wrap(err, "loading trial allocation")
+		}
 	} else {
 		// Insert new allocation.
 		ctx.Log().Debug("RequestResources add allocation")
@@ -586,6 +589,7 @@ func (a *Allocation) ResourcesStateChanged(
 	}
 }
 
+// ResourceFailure handles the resource failures.
 func (a *Allocation) ResourceFailure(ctx *actor.Context, msg sproto.ResourcesFailure) {
 	ctx.Log().Debugf("allocation resource failure")
 	a.setMostProgressedModelState(model.AllocationStateTerminating)
@@ -594,7 +598,11 @@ func (a *Allocation) ResourceFailure(ctx *actor.Context, msg sproto.ResourcesFai
 		ctx.Log().Error(err)
 	}
 
-	a.model.EndTime = cluster.TheLastBootClusterHeartbeat()
+	if a.req.Restore {
+		a.model.EndTime = cluster.TheLastBootClusterHeartbeat()
+	} else {
+		a.model.EndTime = ptrs.Ptr(time.Now().UTC())
+	}
 
 	if err := a.db.CompleteAllocation(&a.model); err != nil {
 		ctx.Log().WithError(err).Error("failed to mark allocation completed")
@@ -851,7 +859,7 @@ func (a *Allocation) purgeRestorableResources(ctx *actor.Context) error {
 		return err
 	}
 
-	if err := a.db.CompleteAllocation(&a.model); err != nil {
+	if err = a.db.CompleteAllocation(&a.model); err != nil {
 		ctx.Log().WithError(err).Error("failed to mark allocation completed")
 	}
 

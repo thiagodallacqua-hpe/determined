@@ -7,7 +7,7 @@ import determined as det
 from determined import _core, tensorboard
 from determined.common import constants, storage
 from determined.common.api import certs
-from determined.common.experimental.session import Session, RETRY
+from determined.common.experimental.session import RETRY, Session
 
 logger = logging.getLogger("determined.core")
 

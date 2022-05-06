@@ -6,13 +6,13 @@ import urllib3
 from determined.common import util
 from determined.common.api import authentication, certs, request
 
-
 # TODO(ilia): Make it configurable.
 RETRY = urllib3.util.retry.Retry(
     total=20,
-    backoff_factor=.5,
+    backoff_factor=0.5,
     allowed_methods=False,
 )
+
 
 class Session:
     def __init__(

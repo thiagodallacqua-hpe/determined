@@ -114,7 +114,7 @@ func (a *AgentState) NumUsedZeroSlots() int {
 	result := 0
 	for _, container := range a.containerState {
 		if len(container.Devices) == 0 {
-			result += 1
+			result++
 		}
 	}
 
@@ -269,10 +269,12 @@ func (a *AgentState) containerStateChanged(ctx *actor.Context, msg aproto.Contai
 	}
 
 	if err := a.persist(); err != nil {
-		ctx.Log().Warnf("containerStateChanged persist failure")
+		ctx.Log().WithError(err).Warnf("containerStateChanged persist failure")
 	}
 
-	updateContainerState(&msg.Container)
+	if err := updateContainerState(&msg.Container); err != nil {
+		ctx.Log().WithError(err).Warnf("containerStateChanged failed to update container state")
+	}
 }
 
 func (a *AgentState) startContainer(ctx *actor.Context, msg sproto.StartTaskContainer) error {
@@ -305,10 +307,12 @@ func (a *AgentState) startContainer(ctx *actor.Context, msg sproto.StartTaskCont
 	a.containerAllocation[msg.Container.ID] = msg.TaskActor
 
 	if err := a.persist(); err != nil {
-		ctx.Log().Warnf("startContainer persist failure")
+		ctx.Log().WithError(err).Warnf("startContainer persist failure")
 	}
 
-	updateContainerState(&msg.StartContainer.Container)
+	if err := updateContainerState(&msg.StartContainer.Container); err != nil {
+		ctx.Log().WithError(err).Warnf("startContainer failed to update container state")
+	}
 
 	return nil
 }
@@ -414,7 +418,7 @@ func (a *AgentState) snapshot() *AgentSnapshot {
 		})
 	}
 
-	container_ids := maps.Keys(a.containerState)
+	containerIds := maps.Keys(a.containerState)
 
 	s := AgentSnapshot{
 		AgentID:               a.Handler.Address().Local(),
@@ -425,7 +429,7 @@ func (a *AgentState) snapshot() *AgentSnapshot {
 		UserDraining:          a.draining, // TODO(ilia): save user setting
 		MaxZeroSlotContainers: a.maxZeroSlotContainers,
 		Slots:                 slotData,
-		Containers:            container_ids,
+		Containers:            containerIds,
 	}
 
 	return &s
@@ -457,13 +461,11 @@ func (a *AgentState) delete() error {
 	_, err := db.Bun().NewDelete().Model((*AgentSnapshot)(nil)).
 		Where("agent_id = ?", a.Handler.Address().Local()).
 		Exec(context.TODO())
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
-func (a *AgentState) clearUnlessRecovered(recovered map[cproto.ID]aproto.ContainerReattachAck) error {
+func (a *AgentState) clearUnlessRecovered(
+	recovered map[cproto.ID]aproto.ContainerReattachAck) error {
 	fmt.Println("clearUnlessRecovered", recovered)
 	updated := false
 	for d := range a.Devices {
@@ -510,6 +512,7 @@ func (a *AgentState) clearUnlessRecovered(recovered map[cproto.ID]aproto.Contain
 	return nil
 }
 
+// AgentID is the agent id type. TODO XXX.
 type AgentID = string
 
 func listResourcePoolsWithReattachEnabled() []string {
@@ -524,7 +527,9 @@ func listResourcePoolsWithReattachEnabled() []string {
 	return result
 }
 
-func RetrieveAgentStates() (map[AgentID]AgentState, error) {
+// retrieveAgentStates reconstructs AgentStates from the database for all resource pools that
+// have agent_container_reattachment enabled.
+func retrieveAgentStates() (map[AgentID]AgentState, error) {
 	rpNames := listResourcePoolsWithReattachEnabled()
 
 	if len(rpNames) == 0 {
@@ -542,7 +547,7 @@ func RetrieveAgentStates() (map[AgentID]AgentState, error) {
 	result := make(map[AgentID]AgentState, len(snapshots))
 
 	for _, s := range snapshots {
-		state, err := NewAgentStateFromSnapshot(s)
+		state, err := newAgentStateFromSnapshot(s)
 		if err != nil {
 			return nil, fmt.Errorf("failed to recreate agent state %s: %w", s.AgentID, err)
 		}
@@ -553,7 +558,7 @@ func RetrieveAgentStates() (map[AgentID]AgentState, error) {
 	return result, nil
 }
 
-func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
+func newAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 	parsedUUID, err := uuid.Parse(as.UUID)
 	if err != nil {
 		return nil, err
@@ -624,7 +629,7 @@ func (a *AgentState) restoreContainersField() error {
 	return nil
 }
 
-func ClearAgentStates(agentIds []AgentID) error {
+func clearAgentStates(agentIds []AgentID) error {
 	_, err := db.Bun().NewDelete().Where("agent_id in (?)", agentIds).Exec(context.TODO())
 
 	return err
@@ -640,7 +645,8 @@ func updateContainerState(c *cproto.Container) error {
 	return err
 }
 
-func loadContainersToAllocationIds(containerIDs []cproto.ID) (map[cproto.ID]model.AllocationID, error) {
+func loadContainersToAllocationIds(
+	containerIDs []cproto.ID) (map[cproto.ID]model.AllocationID, error) {
 	cs := []ContainerSnapshot{}
 	result := []map[string]interface{}{}
 	rr := map[cproto.ID]model.AllocationID{}

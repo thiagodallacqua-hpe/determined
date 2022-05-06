@@ -1,19 +1,22 @@
 package agent
 
 import (
+	"github.com/uptrace/bun"
+
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/aproto"
 	"github.com/determined-ai/determined/master/pkg/cproto"
 	"github.com/determined-ai/determined/master/pkg/device"
-	"github.com/uptrace/bun"
 )
 
+// SlotData is a database representation of slot state.
 type SlotData struct {
 	Device      device.Device
 	UserEnabled bool
 	ContainerID *cproto.ID
 }
 
+// AgentSnapshot is a database representation of `agentState`.
 type AgentSnapshot struct {
 	bun.BaseModel `bun:"table:resourcemanagers_agent_agentstate,alias:rmas"`
 
@@ -39,7 +42,7 @@ type ContainerSnapshot struct {
 	Devices       []device.Device    `json:"devices" bun:"devices"`
 }
 
-// NewContainerSnapshot creates an instance from cproto.Container.
+// NewContainerSnapshot creates an instance from `cproto.Container`.
 func NewContainerSnapshot(c *cproto.Container) ContainerSnapshot {
 	return ContainerSnapshot{
 		ID:      c.ID,

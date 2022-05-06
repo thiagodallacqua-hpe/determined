@@ -275,7 +275,10 @@ func (t *trial) maybeAllocateTask(ctx *actor.Context) error {
 		return nil
 	}
 
-	t.addTask()
+	if err := t.addTask(); err != nil {
+		return err
+	}
+
 	t.runID++
 
 	ar := sproto.AllocateRequest{
@@ -595,9 +598,9 @@ func (t *trial) maybeRestoreAllocation(ctx *actor.Context) (*model.Allocation, e
 	case openAllocs == 1:
 		return &allocations[0], nil
 	case openAllocs > 1:
-		const MAX_ALLOCS_TO_LOG int = 3
-		allocIDs := make([]string, 0, MAX_ALLOCS_TO_LOG)
-		for _, alloc := range allocations[0:mathx.Min(len(allocations), MAX_ALLOCS_TO_LOG)] {
+		const maxAllocsToLog int = 3
+		allocIDs := make([]string, 0, maxAllocsToLog)
+		for _, alloc := range allocations[0:mathx.Min(len(allocations), maxAllocsToLog)] {
 			allocIDs = append(allocIDs, alloc.AllocationID.String())
 		}
 		return nil, errors.New(

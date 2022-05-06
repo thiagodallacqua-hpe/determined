@@ -5,9 +5,10 @@ import (
 	"crypto/tls"
 	"fmt"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/determined-ai/determined/master/pkg/logger"
 	"github.com/determined-ai/determined/master/pkg/model"
-	"golang.org/x/exp/maps"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -159,22 +160,26 @@ func (rp *ResourcePool) allocateRequest(ctx *actor.Context, msg sproto.AllocateR
 	rp.taskList.AddTask(&msg)
 }
 
-func (rp *ResourcePool) restoreResources(ctx *actor.Context, req *sproto.AllocateRequest) (bool, error) {
+func (rp *ResourcePool) restoreResources(
+	ctx *actor.Context, req *sproto.AllocateRequest) (bool, error) {
 	rp.agentStatesCache = rp.fetchAgentStates(ctx)
 	defer func() {
 		rp.agentStatesCache = nil
 	}()
 
-	allocation_id := req.AllocationID
+	allocationID := req.AllocationID
 
 	subq := db.Bun().NewSelect().Model((*task.ResourcesWithState)(nil)).
-		Where("allocation_id = ?", allocation_id).
+		Where("allocation_id = ?", allocationID).
 		Column("resource_id")
 
 	containerSnapshots := []agent.ContainerSnapshot{}
-	db.Bun().NewSelect().Model(&containerSnapshots).
+	err := db.Bun().NewSelect().Model(&containerSnapshots).
 		Where("resource_id in (?)", subq).
 		Scan(context.TODO())
+	if err != nil {
+		return false, err
+	}
 
 	if len(containerSnapshots) == 0 {
 		return false, errors.New("0 container snapshots")
@@ -253,7 +258,7 @@ func (rp *ResourcePool) allocateResources(ctx *actor.Context, req *sproto.Alloca
 		})
 		var resp actor.Message
 		if err := rr.Error(); err != nil {
-			resp = errors.New("AllocateFreeDevices ask error")
+			resp = errors.New("ask error in AllocateFreeDevices")
 		} else {
 			resp = rr.Get()
 			if resp == nil {

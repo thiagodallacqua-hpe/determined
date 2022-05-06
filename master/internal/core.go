@@ -848,17 +848,15 @@ func (m *Master) Run(ctx context.Context) error {
 	rwCoordinator := newRWCoordinator()
 	m.rwCoordinator, _ = m.system.ActorOf(actor.Addr("rwCoordinator"), rwCoordinator)
 
-	if err := m.restoreNonTerminalExperiments(); err != nil {
+	if err = m.restoreNonTerminalExperiments(); err != nil {
 		return err
 	}
 
 	// End stats for dangling agents/instances in case of master crushed
-	err = m.db.EndAllAgentStats()
-	if err != nil {
+	if err = m.db.EndAllAgentStats(); err != nil {
 		return errors.Wrap(err, "could not update end stats for agents")
 	}
-	err = m.db.EndAllInstanceStats()
-	if err != nil {
+	if err = m.db.EndAllInstanceStats(); err != nil {
 		return errors.Wrap(err, "could not update end stats for instances")
 	}
 

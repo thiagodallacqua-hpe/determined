@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/determined-ai/determined/master/pkg/aproto"
 	"github.com/docker/docker/api/types/container"
 	"github.com/golang-collections/collections/set"
+
+	"github.com/determined-ai/determined/master/pkg/aproto"
 )
 
 func TestNoAddProxy(t *testing.T) {

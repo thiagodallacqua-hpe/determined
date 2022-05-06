@@ -8,9 +8,10 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/uptrace/bun"
+
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
 	"github.com/determined-ai/determined/proto/pkg/logv1"
-	"github.com/uptrace/bun"
 
 	"github.com/google/uuid"
 

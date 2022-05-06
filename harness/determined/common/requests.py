@@ -1,7 +1,7 @@
 """
 A drop-in replacement for requests.request() which supports server name overriding.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import requests
 import urllib3
@@ -22,7 +22,9 @@ class HTTPAdapter(requests.adapters.HTTPAdapter):
 
 
 class Session(requests.sessions.Session):
-    def __init__(self, server_hostname: Optional[str], max_retries: Optional[urllib3.util.retry.Retry]) -> None:
+    def __init__(
+        self, server_hostname: Optional[str], max_retries: Optional[urllib3.util.retry.Retry]
+    ) -> None:
         super().__init__()
         if max_retries is None:
             # Override the https adapter.

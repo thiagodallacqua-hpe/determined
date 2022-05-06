@@ -41,7 +41,7 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			// TODO(ilia): only restore the agents which have some non-zero state.
 			// Currently, if an agent tries to reconnect and it was not restored here,
 			// then it'd be told it must restart and do a fresh connection.
-			agentStates, err := RetrieveAgentStates()
+			agentStates, err := retrieveAgentStates()
 			if err != nil {
 				ctx.Log().WithError(err).Warnf("failed to retrieve agent states")
 			}
@@ -49,16 +49,21 @@ func (a *agents) Receive(ctx *actor.Context) error {
 			ctx.Log().Debugf("agent states to restore: %d", len(agentStates))
 			badAgentIds := []AgentID{}
 
-			for agentId, agentState := range agentStates {
-				if _, err := a.createAgentActor(ctx, agentId, agentState.resourcePoolName, a.opts, &agentState); err != nil {
-					ctx.Log().WithError(err).Warnf("failed to create agent %s", agentId)
-					badAgentIds = append(badAgentIds, agentId)
+			for agentID := range agentStates {
+				agentState := agentStates[agentID]
+				_, err := a.createAgentActor(
+					ctx, agentID, agentState.resourcePoolName, a.opts, &agentState)
+				if err != nil {
+					ctx.Log().WithError(err).Warnf("failed to create agent %s", agentID)
+					badAgentIds = append(badAgentIds, agentID)
 				}
 			}
 
 			if len(badAgentIds) > 0 {
 				ctx.Log().Debugf("cleaning %d bad agent states", len(badAgentIds))
-				ClearAgentStates(badAgentIds)
+				if err := clearAgentStates(badAgentIds); err != nil {
+					ctx.Log().WithError(err).Warnf("failed to clean bad agent states")
+				}
 			}
 		}
 	case api.WebSocketConnected:
