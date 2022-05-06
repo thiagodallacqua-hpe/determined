@@ -834,6 +834,14 @@ func (m *Master) Run(ctx context.Context) error {
 	m.echo.HideBanner = true
 	m.echo.HTTPErrorHandler = api.JSONErrorHandler
 
+	// Before RM start, end stats for dangling agents/instances in case of master crash.
+	if err = m.db.EndAllAgentStats(); err != nil {
+		return errors.Wrap(err, "could not update end stats for agents")
+	}
+	if err = m.db.EndAllInstanceStats(); err != nil {
+		return errors.Wrap(err, "could not update end stats for instances")
+	}
+
 	// Resource Manager.
 	agentOpts := &aproto.MasterSetAgentOptions{
 		MasterInfo:     m.Info(),
@@ -850,14 +858,6 @@ func (m *Master) Run(ctx context.Context) error {
 
 	if err = m.restoreNonTerminalExperiments(); err != nil {
 		return err
-	}
-
-	// End stats for dangling agents/instances in case of master crushed
-	if err = m.db.EndAllAgentStats(); err != nil {
-		return errors.Wrap(err, "could not update end stats for agents")
-	}
-	if err = m.db.EndAllInstanceStats(); err != nil {
-		return errors.Wrap(err, "could not update end stats for instances")
 	}
 
 	if err = m.db.FailDeletingExperiment(); err != nil {
