@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/sproto"
@@ -138,9 +139,14 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 		}
 
 		var masterSetAgentOptions aproto.AgentMessage
-		if a.awaitingReconnect && a.agentReattachEnabled {
+		fmt.Println("websocketconnected", a.awaitingReconnect, a.agentReattachEnabled)
+		// For reconnecting containers, or when reattach is enabled, try to synchronize containers.
+		// Flush them otherwise.
+		reconnect, _ := msg.IsReconnect()
+		if a.awaitingReconnect && (a.agentReattachEnabled || reconnect) {
 			optsCopy := *a.opts
 			optsCopy.ContainersToReattach = a.gatherContainersToReattach(ctx)
+			fmt.Println("containersToReattach", optsCopy.ContainersToReattach)
 			masterSetAgentOptions = aproto.AgentMessage{MasterSetAgentOptions: &optsCopy}
 		} else {
 			masterSetAgentOptions = aproto.AgentMessage{MasterSetAgentOptions: a.opts}
@@ -174,7 +180,7 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 
 			if len(a.reconnectBacklog) > 0 {
 				for i, msg := range a.reconnectBacklog {
-					fmt.Println("reconnectBacklog", i, reflect.TypeOf(msg))
+					ctx.Log().Debugf("will replay reconnectBacklog %d %s", i, reflect.TypeOf(msg))
 				}
 			}
 
@@ -337,15 +343,12 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 
 		ctx.Respond(a.agentState.patchAllSlotsState(ctx, msg))
 	case AllocateFreeDevices:
-		fmt.Println("AllocateFreeDevices")
 		if !a.started {
-			fmt.Println("AllocateFreeDevices not started")
+			ctx.Log().Debugf("received AllocateFreeDevices on non-started agent")
 			ctx.Respond(errors.New("can't allocate free devices: agent not started"))
 			return nil
 		}
 		devices, err := a.agentState.AllocateFreeDevices(msg.Slots, msg.ContainerID)
-		fmt.Println("AllocateFreeDevices devices", devices)
-		fmt.Println("AllocateFreeDevices err", err)
 		if err != nil {
 			ctx.Respond(err)
 		} else {
@@ -519,21 +522,11 @@ func (a *agent) containerStateChanged(ctx *actor.Context, sc aproto.ContainerSta
 }
 
 func (a *agent) summarize(ctx *actor.Context) model.AgentSummary {
-	// BEGIN DEBUG
 	if a.agentState != nil {
-		fmt.Println("AGENT STATE DEVICES: ", a.agentState.Devices)
-		slotStates := []slot{}
-		for _, v := range a.agentState.slotStates {
-			if v != nil {
-				slotStates = append(slotStates, *v)
-			}
-		}
-		fmt.Println("AGENT STATE SLOTS: ", slotStates)
-	} else {
-		fmt.Println("AGENT STATE NIL")
+		fmt.Println("agent summarize debug")
+		fmt.Println(maps.Keys(a.agentState.containerAllocation))
+		fmt.Println(maps.Keys(a.agentState.containerState))
 	}
-	// END DEBUG
-
 	result := model.AgentSummary{
 		ID:             ctx.Self().Address().Local(),
 		RegisteredTime: ctx.Self().RegisteredTime(),
@@ -594,6 +587,7 @@ func (a *agent) gatherContainersToReattach(ctx *actor.Context) []aproto.Containe
 func (a *agent) handleContainersReattached(ctx *actor.Context, agentStarted *aproto.AgentStarted) error {
 	ctx.Log().Debugf("agent ContainersRestored ip: %v , containers: %v",
 		a.address, agentStarted.ContainersReattached)
+	fmt.Println("handleContainersReattached containerState", a.agentState.containerState, a.agentState.containerAllocation)
 
 	recovered := map[cproto.ID]aproto.ContainerReattachAck{}
 

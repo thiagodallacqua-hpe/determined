@@ -464,6 +464,7 @@ func (a *AgentState) delete() error {
 }
 
 func (a *AgentState) clearUnlessRecovered(recovered map[cproto.ID]aproto.ContainerReattachAck) error {
+	fmt.Println("clearUnlessRecovered", recovered)
 	updated := false
 	for d := range a.Devices {
 		if cID := a.Devices[d]; cID != nil {
@@ -604,6 +605,7 @@ func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 func (a *AgentState) restoreContainersField() error {
 	containerIDs := []cproto.ID{}
 
+	// TODO(ilia): Use agentState.containerState so zero-slots are also included.
 	for k := range a.Devices {
 		if a.Devices[k] != nil {
 			containerIDs = append(containerIDs, *a.Devices[k])
@@ -622,9 +624,9 @@ func (a *AgentState) restoreContainersField() error {
 			containers[contID] = ref
 		}
 	}
-	fmt.Println("containers map size:", len(containers))
+	log.WithField("agent-id", a.string()).Debugf("restored containers: %d", len(containers))
 
-	a.containerAllocation = containers
+	maps.Copy(a.containerAllocation, containers)
 
 	return nil
 }
@@ -662,13 +664,10 @@ func loadContainersToAllocationIds(containerIDs []cproto.ID) (map[cproto.ID]mode
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("loadContainersToAllocationIDs result", result)
 
 	for _, row := range result {
 		rr[cproto.ID(row["container_id"].(string))] = model.AllocationID(row["allocation_id"].(string))
 	}
-
-	fmt.Println("loadContainersToAllocationIDs rr ", rr)
 
 	return rr, nil
 }

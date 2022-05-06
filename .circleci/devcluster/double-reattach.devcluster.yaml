@@ -51,6 +51,7 @@ stages:
         container_master_host: $DOCKER_LOCALHOST
         agent_reconnect_attempts: 24
         agent_reconnect_backoff: 5
+        container_auto_remove_disabled: true
 
 
   - agent:
@@ -65,3 +66,4 @@ stages:
           container_name: determined-fluent-2
         agent_reconnect_attempts: 24
         agent_reconnect_backoff: 5
+        container_auto_remove_disabled: true
