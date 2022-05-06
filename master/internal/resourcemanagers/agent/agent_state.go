@@ -603,14 +603,7 @@ func NewAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 }
 
 func (a *AgentState) restoreContainersField() error {
-	containerIDs := []cproto.ID{}
-
-	// TODO(ilia): Use agentState.containerState so zero-slots are also included.
-	for k := range a.Devices {
-		if a.Devices[k] != nil {
-			containerIDs = append(containerIDs, *a.Devices[k])
-		}
-	}
+	containerIDs := maps.Keys(a.containerState)
 
 	c2a, err := loadContainersToAllocationIds(containerIDs)
 	if err != nil {
