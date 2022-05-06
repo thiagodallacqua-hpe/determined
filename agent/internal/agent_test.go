@@ -3,9 +3,9 @@ package internal
 import (
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/determined-ai/determined/master/pkg/aproto"
-	"github.com/determined-ai/determined/master/pkg/model"
 	"github.com/docker/docker/api/types/container"
 	"github.com/golang-collections/collections/set"
 )
@@ -111,7 +111,7 @@ func defaultAgentConfig() Options {
 			ContainerName: "determined-fluent-test",
 		},
 		AgentReconnectAttempts: aproto.AgentReconnectAttempts,
-		AgentReconnectBackoff:  model.Duration(aproto.AgentReconnectBackoff),
+		AgentReconnectBackoff:  int(aproto.AgentReconnectBackoff / time.Second),
 	}
 }
 
