@@ -268,7 +268,7 @@ func (a *AgentState) containerStateChanged(ctx *actor.Context, msg aproto.Contai
 
 		if msg.Container.State == cproto.Terminated {
 			s.containerID = nil
-			a.containerState[msg.Container.ID] = nil
+			delete(a.containerState, msg.Container.ID)
 		}
 	}
 
