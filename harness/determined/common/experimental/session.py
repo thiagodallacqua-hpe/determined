@@ -7,11 +7,18 @@ from determined.common import util
 from determined.common.api import authentication, certs, request
 
 # TODO(ilia): Make it configurable.
-RETRY = urllib3.util.retry.Retry(
-    total=20,
-    backoff_factor=0.5,
-    allowed_methods=False,
-)
+try:
+    RETRY = urllib3.util.retry.Retry(
+        total=20,
+        backoff_factor=0.5,
+        allowed_methods=False,
+    )
+except TypeError:  # Support urllib3 prior to 1.26
+    RETRY = urllib3.util.retry.Retry(
+        total=20,
+        backoff_factor=0.5,
+        method_whitelist=False,  # type: ignore
+    )
 
 
 class Session:
