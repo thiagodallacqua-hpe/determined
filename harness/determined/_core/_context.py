@@ -7,7 +7,7 @@ import determined as det
 from determined import _core, tensorboard
 from determined.common import constants, storage
 from determined.common.api import certs
-from determined.common.experimental.session import RETRY, Session
+from determined.common.experimental.session import Session, get_max_retries_config
 
 logger = logging.getLogger("determined.core")
 
@@ -114,7 +114,7 @@ def init(
 
     # We are on the cluster.
     cert = certs.default_load(info.master_url)
-    session = Session(info.master_url, None, None, cert, max_retries=RETRY)
+    session = Session(info.master_url, None, None, cert, max_retries=get_max_retries_config())
 
     if distributed is None:
         if len(info.container_addrs) > 1 or len(info.slot_ids) > 1:

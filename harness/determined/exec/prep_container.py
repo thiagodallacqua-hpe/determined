@@ -13,7 +13,7 @@ import determined as det
 from determined import constants
 from determined.common import util
 from determined.common.api import bindings, certs, request
-from determined.common.experimental import RETRY, Session
+from determined.common.experimental import Session, get_max_retries_config
 
 
 def trial_prep(info: det.ClusterInfo, cert: certs.Cert) -> None:
@@ -197,7 +197,13 @@ if __name__ == "__main__":
         info._to_file()
 
     cert = certs.default_load(info.master_url)
-    sess = Session(info.master_url, util.get_container_user_name(), None, cert, max_retries=RETRY)
+    sess = Session(
+        info.master_url,
+        util.get_container_user_name(),
+        None,
+        cert,
+        max_retries=get_max_retries_config(),
+    )
 
     if args.trial:
         trial_prep(info, cert)
