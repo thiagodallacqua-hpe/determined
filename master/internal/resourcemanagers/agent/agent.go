@@ -587,7 +587,8 @@ func (a *agent) handleContainersReattached(
 					recovered[cid] = containerRestored
 				} else {
 					ctx.Log().Warnf(
-						"reattached container %s has changed state: %s to %s", cid, a.agentState.containerState[cid].State,
+						"reattached container %s has changed state: %s to %s",
+						cid, a.agentState.containerState[cid].State,
 						containerRestored.Container.State)
 				}
 			}

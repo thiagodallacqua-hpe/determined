@@ -54,6 +54,7 @@ func NewContainerSnapshot(c *cproto.Container) ContainerSnapshot {
 	}
 }
 
+// ToContainer converts to `cproto.Container`.
 func (cs *ContainerSnapshot) ToContainer() cproto.Container {
 	return cproto.Container{
 		ID:      cs.ID,
