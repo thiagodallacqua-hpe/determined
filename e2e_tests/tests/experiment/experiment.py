@@ -98,7 +98,6 @@ def wait_for_experiment_state(
     max_wait_secs: int = conf.DEFAULT_MAX_WAIT_SECS,
     log_every: int = 60,
 ) -> None:
-    # TODO(ilia): this per-second wait is exploding in time with retry-able sessions.
     for seconds_waited in range(max_wait_secs):
         try:
             state = experiment_state(experiment_id)

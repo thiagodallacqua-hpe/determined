@@ -214,7 +214,6 @@ func (t *trial) recover() error {
 	if err != nil {
 		return errors.Wrap(err, "restoring old trial state")
 	}
-	// TODO only increment runID if it's not recovered.
 	t.runID = runID
 	t.restarts = restarts
 	return nil

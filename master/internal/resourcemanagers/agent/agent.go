@@ -186,7 +186,7 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 
 			for _, msg := range a.reconnectBacklog {
 				if err := a.receive(ctx, msg); err != nil {
-					ctx.Log().WithError(err).WithField("msg", msg).Debugf("repl backlog")
+					ctx.Log().WithError(err).WithField("msg", msg).Errorf("replaying backlog")
 					return errors.Wrapf(err, "replaying backlog")
 				}
 			}
@@ -402,7 +402,8 @@ func (a *agent) receive(ctx *actor.Context, msg interface{}) error {
 func (a *agent) bufferForRecovery(ctx *actor.Context, msg interface{}) {
 	// This explodes the debug logs when msg is big
 	// ctx.Log().WithField("msg", msg).Debugf("buffering message until agent reconnects")
-	ctx.Log().Debugf("buffering message until agent reconnects")
+	ctx.Log().WithField("msg-type", reflect.TypeOf(msg)).
+		Debugf("buffering message until agent reconnects")
 	a.reconnectBacklog = append(a.reconnectBacklog, msg)
 }
 
