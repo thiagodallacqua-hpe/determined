@@ -402,3 +402,19 @@ func IsAgentRMReattachEnabled() bool {
 func IsReattachEnabled() bool {
 	return IsAgentRMReattachEnabled()
 }
+
+// IsReattachEnabledForRP returns whether the container reattachment is enabled for the given
+// resource pool.
+func IsReattachEnabledForRP(rpName string) bool {
+	config := GetMasterConfig()
+	if config.ResourceManager.AgentRM == nil {
+		return false
+	}
+
+	for _, rpConfig := range config.ResourcePools {
+		if rpConfig.PoolName == rpName && rpConfig.AgentReattachEnabled {
+			return true
+		}
+	}
+	return false
+}

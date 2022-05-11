@@ -53,3 +53,11 @@ func NewContainerSnapshot(c *cproto.Container) ContainerSnapshot {
 		Devices: c.Devices,
 	}
 }
+
+func (cs *ContainerSnapshot) ToContainer() cproto.Container {
+	return cproto.Container{
+		ID:      cs.ID,
+		State:   cs.State,
+		Devices: cs.Devices,
+	}
+}

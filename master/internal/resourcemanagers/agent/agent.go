@@ -579,10 +579,17 @@ func (a *agent) handleContainersReattached(
 
 	for _, containerRestored := range agentStarted.ContainersReattached {
 		if containerRestored.Failure == nil {
-			_, ok := a.agentState.containerAllocation[containerRestored.Container.ID]
+			cid := containerRestored.Container.ID
+			_, ok := a.agentState.containerAllocation[cid]
 
 			if ok {
-				recovered[containerRestored.Container.ID] = containerRestored
+				if a.agentState.containerState[cid].State == containerRestored.Container.State {
+					recovered[cid] = containerRestored
+				} else {
+					ctx.Log().Warnf(
+						"reattached container %s has changed state: %s to %s", cid, a.agentState.containerState[cid].State,
+						containerRestored.Container.State)
+				}
 			}
 		} else {
 			ctx.Log().Infof(

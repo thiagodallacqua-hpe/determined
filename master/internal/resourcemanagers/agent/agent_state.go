@@ -587,9 +587,20 @@ func newAgentStateFromSnapshot(as AgentSnapshot) (*AgentState, error) {
 	}
 
 	containerState := make(map[cproto.ID]*cproto.Container)
-	for _, cid := range as.Containers {
-		// TODO(ilia): Restore full contents from database.
-		containerState[cid] = &cproto.Container{ID: cid}
+
+	if len(as.Containers) > 0 {
+		containerSnapshots := make([]ContainerSnapshot, 0, len(as.Containers))
+		err := db.Bun().NewSelect().Model(&containerSnapshots).
+			Where("container_id IN (?)", bun.In(as.Containers)).
+			Scan(context.TODO())
+		if err != nil {
+			return nil, err
+		}
+
+		for _, containerSnapshot := range containerSnapshots {
+			container := containerSnapshot.ToContainer()
+			containerState[container.ID] = &container
+		}
 	}
 
 	result := AgentState{

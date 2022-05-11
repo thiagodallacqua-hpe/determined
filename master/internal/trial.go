@@ -595,7 +595,12 @@ func (t *trial) maybeRestoreAllocation(ctx *actor.Context) (*model.Allocation, e
 	case openAllocs == 0:
 		return nil, nil
 	case openAllocs == 1:
-		return &allocations[0], nil
+		allocation := &allocations[0]
+		if !config.IsReattachEnabledForRP(allocation.ResourcePool) {
+			return nil, nil
+		}
+
+		return allocation, nil
 	case openAllocs > 1:
 		const maxAllocsToLog int = 3
 		allocIDs := make([]string, 0, maxAllocsToLog)

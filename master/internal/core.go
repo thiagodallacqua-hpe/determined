@@ -554,7 +554,7 @@ func (m *Master) tryRestoreExperiment(sema chan struct{}, wg *sync.WaitGroup, e 
 	defer func() { <-sema }()
 	defer func() { wg.Done() }()
 
-	// restoreExperiments wait for experiment allocations to be initialized.
+	// restoreExperiments waits for experiment allocations to be initialized.
 	if err := m.restoreExperiment(e); err != nil {
 		log.WithError(err).Errorf("failed to restore experiment: %d", e.ID)
 		e.State = model.ErrorState
