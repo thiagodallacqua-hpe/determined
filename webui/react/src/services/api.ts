@@ -189,6 +189,10 @@ export const moveExperiment = generateDetApi<
   Api.V1MoveExperimentRequest, Api.V1MoveExperimentResponse, void
 >(Config.moveExperiment);
 
+export const getExperimentFileTree = generateDetApi<
+  Service.ExperimentIdParams, Api.V1GetExperimentFileTreeResponse, void
+>(Config.getExperimentFileTree);
+
 /* Tasks */
 
 export const getTask = generateDetApi<
