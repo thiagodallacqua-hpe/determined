@@ -193,9 +193,9 @@ export const getExperimentFileTree = generateDetApi<
   Service.ExperimentIdParams, Api.V1GetExperimentFileTreeResponse, Api.FileNode[]
 >(Config.getExperimentFileTree);
 
-// export const getExperimentFileFromTree = generateDetApi<
-//   Service.ExperimentIdParams, Api.V1GetExperimentFileTreeResponse, Api.FileNode[]
-// >(Config.getExperimentFileTree);
+export const getExperimentFileFromTree = generateDetApi<
+  Service.GetExperimentFileFromTreeParams, Api.V1GetExperimentFileFromTreeResponse, string
+>(Config.getExperimentFileFromTree);
 
 /* Tasks */
 
