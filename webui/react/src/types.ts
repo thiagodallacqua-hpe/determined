@@ -507,6 +507,7 @@ export interface ProjectExperiment extends ExperimentItem {
 export interface ExperimentBase extends ProjectExperiment {
   config: ExperimentConfig;
   configRaw: RawJson; // Readonly unparsed config object.
+  originalConfig?: string;
   hyperparameters: HyperparametersFlattened; // nested hp keys are flattened, eg) foo.bar
 
 }
